@@ -1098,7 +1098,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
             chave_alvo = obter_chave_casulo(rua_cad, lado_chave_cad, col_cad, nivel_cad)
             dados_casulo_alvo = st.session_state.base_dados_cd.get(chave_alvo, {})
             pecas_atuais_totais = calcular_pecas_totais(dados_casulo_alvo)
-            pct_atual = calcular_fracao_ocupada(dados_casulo_alvo, spec_cad["tipo_estrutural"]) * 100
+            pct_atual = calcular_fracao_ocupada(dados_casulo_alvo, spec_cad["tipo_estrutural"], rua_cad) * 100
 
             st.info(f"📦 Casulo {rua_cad} - Col {col_cad:03d} - Nível {nivel_cad} | Tipo: **{spec_cad['tipo_desc']}** | Ocupação atual: **{pecas_atuais_totais} peças ({pct_atual:.1f}%)**")
 
@@ -1107,11 +1107,11 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
             with col_t1:
                 estacao_cad = st.selectbox("Estação (marca da peça)", ESTACOES_PECA, key="estacao_cad")
             with col_t2:
-                categorias_disponiveis = CATEGORIAS_POR_ESTACAO[estacao_cad]
-                categorias_permitidas = [c for c in categorias_disponiveis if peca_permitida(c, spec_cad["tipo_estrutural"], estacao_cad)]
+                categorias_disponiveis = obter_categorias_por_estacao(obter_genero_rua(rua_cad))[estacao_cad]
+                categorias_permitidas = [c for c in categorias_disponiveis if peca_permitida(c, spec_cad["tipo_estrutural"], estacao_cad, rua_cad)]
                 categoria_cad = st.selectbox("Categoria da peça", categorias_permitidas, key="categoria_cad")
 
-            faixa_cad = obter_faixa_capacidade(categoria_cad, spec_cad["tipo_estrutural"], estacao_cad)
+            faixa_cad = obter_faixa_capacidade(categoria_cad, spec_cad["tipo_estrutural"], estacao_cad, rua_cad)
             cap_min_cad = faixa_cad[0] if faixa_cad else 0
 
             chave_combo_cad = obter_chave_estoque(categoria_cad, estacao_cad)
@@ -1164,13 +1164,13 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                             continue
 
                         estacao_sorteada = np.random.choice(ESTACOES_PECA)
-                        categorias_disp_pop = CATEGORIAS_POR_ESTACAO[estacao_sorteada]
-                        categorias_ok_pop = [c for c in categorias_disp_pop if peca_permitida(c, spec_pop["tipo_estrutural"], estacao_sorteada)]
+                        categorias_disp_pop = obter_categorias_por_estacao(obter_genero_rua(r_n))[estacao_sorteada]
+                        categorias_ok_pop = [c for c in categorias_disp_pop if peca_permitida(c, spec_pop["tipo_estrutural"], estacao_sorteada, r_n)]
                         if not categorias_ok_pop:
                             st.session_state.base_dados_cd[k] = {}
                             continue
                         categoria_sorteada = np.random.choice(categorias_ok_pop)
-                        cap_min_pop = obter_capacidade_minima(categoria_sorteada, spec_pop["tipo_estrutural"], estacao_sorteada)
+                        cap_min_pop = obter_capacidade_minima(categoria_sorteada, spec_pop["tipo_estrutural"], estacao_sorteada, r_n)
                         qtd_sorteada = int(np.random.choice([0, int(cap_min_pop * 0.3), int(cap_min_pop * 0.7), cap_min_pop]))
 
                         if qtd_sorteada > 0:
