@@ -1026,20 +1026,29 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
     st.markdown(f"<p style='color: #8892b0; text-align: center;'>Cada lançamento marca a peça com uma categoria (do tipo Regatas/Bodys/Tops até Jaquetas Pesadas) e uma estação. Estoques de estações diferentes convivem no mesmo casulo.</p>", unsafe_allow_html=True)
 
     with st.expander("📋 Ver tabela de capacidade (Verão / Inverno)"):
-        st.markdown("**Verão** (peças por casulo, faixa mín-máx)")
+        st.markdown("**Verão - Feminino** (peças por casulo, faixa mín-máx)")
         df_verao = pd.DataFrame([
             {"Categoria": cat, **{tipo: f"{v[0]}-{v[1]}" if v else "Proibido" for tipo, v in tipos.items()}}
-            for cat, tipos in CAPACIDADE_VERAO.items()
+            for cat, tipos in CAPACIDADE_VERAO_FEMININO.items()
         ])
         st.dataframe(df_verao, use_container_width=True, hide_index=True)
 
-        st.markdown("**Inverno** (peças por casulo, faixa mín-máx)")
+        st.markdown("**Inverno - Feminino** (peças por casulo, faixa mín-máx)")
         df_inverno = pd.DataFrame([
             {"Categoria": cat, **{tipo: f"{v[0]}-{v[1]}" if v else "Proibido" for tipo, v in tipos.items()}}
-            for cat, tipos in CAPACIDADE_INVERNO.items()
+            for cat, tipos in CAPACIDADE_INVERNO_FEMININO.items()
         ])
         st.dataframe(df_inverno, use_container_width=True, hide_index=True)
-        st.caption("O sistema usa sempre o valor MÍNIMO da faixa como capacidade real. Meia-Estação reaproveita a tabela de Verão (sem tabela própria ainda).")
+
+        st.markdown("**Densidade fixa por rua (Masculino)** — sobrepõe a tabela de categoria")
+        df_fixa = pd.DataFrame([
+            {"Rua": rua, "Tipo": tipo, "Capacidade fixa": valor}
+            for rua, tipos in CAPACIDADE_FIXA_POR_RUA.items()
+            for tipo, valor in tipos.items()
+        ])
+        st.dataframe(df_fixa, use_container_width=True, hide_index=True)
+
+        st.caption("O sistema usa sempre o valor MÍNIMO da faixa como capacidade real (ou a densidade fixa, quando existir). Meia-Estação reaproveita a tabela de Verão. Travas rígidas: P máx 6 peças, Vestidos em M máx 4 peças, em qualquer rua.")
 
     tab_cad1, tab_cad2 = st.tabs(["✏️ Atualização de Casulo Individual", "🧹 Ações Globais na Base"])
 
