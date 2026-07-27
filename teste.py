@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -40,53 +39,125 @@ ESTRUTURA_CD = {
     "Rua 21": {"tipo": "Metal_Seq_21", "cols_impar": [], "cols_par": [], "cols_seq": list(range(1, 78, 2))}
 }
 
+# Mapeamento de gênero por rua, conforme sua apresentação (slides "Estoque
+# Feminino" e "Estoque Masculino"). Usado para escolher a tabela de
+# capacidade correta.
+RUA_GENERO = {
+    "Rua 02": "Feminino", "Rua 03": "Feminino", "Rua 04": "Feminino",
+    "Rua 05": "Feminino", "Rua 06": "Feminino", "Rua 07": "Feminino",
+    "Rua 08": "Feminino", "Rua 09": "Feminino", "Rua 10": "Feminino",
+    "Rua 11": "Feminino", "Rua 14": "Feminino",
+    "Rua 15": "Masculino", "Rua 16": "Masculino", "Rua 17": "Masculino",
+    "Rua 18": "Masculino", "Rua 19": "Masculino", "Rua 20": "Masculino",
+    "Rua 21": "Masculino",
+}
+
+def obter_genero_rua(rua_nome):
+    return RUA_GENERO.get(rua_nome, "Feminino")
+
 NIVEIS_G = ["B", "E", "H", "K", "N", "Q", "T"]
 NIVEIS_M = ["B", "D", "E", "G", "H", "J", "K", "M", "N", "P", "Q", "S", "T", "V"]
 NIVEIS_P = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V"]
 NIVEIS_METAL_5 = ["B", "C", "D", "E", "F"]
 
 # ==========================================
-# MOTOR DE CAPACIDADE POR VOLUME (cm³)
+# MOTOR DE CAPACIDADE — TABELA EMPÍRICA REAL
+# (extraída da apresentação "Capacidade e Controle de Estoque")
 # ==========================================
-# Volumes unitários REAIS de cada casulo, conforme especificação física do CD.
+# Cada célula é uma faixa (mínimo, máximo) de peças por casulo. O sistema usa
+# sempre o MÍNIMO da faixa (decisão tomada com você: mais conservador).
+# None = combinação proibida (ex: jaqueta pesada em aramado).
 
-VOLUME_ARAMADO_P = 16000
-VOLUME_ARAMADO_M = 24000
-VOLUME_ARAMADO_G = 48000
-
-# Rua 14 - Setor 2 (Metal Profundo, colunas 24-31)
-VOLUME_METAL_PROFUNDO = {"F": 162000, "comum": 216000}
-
-# Rua 14 - Setor 4 (Metal Raso, colunas 42-48) e infiltrações de metal nas
-# Ruas 16-20 e Rua 21 (mesmo padrão de 5 níveis B-F). OBS: a largura das
-# infiltrações das Ruas 16-20/21 não veio especificada no documento — estou
-# assumindo a mesma cubagem do Metal Raso da Rua 14 até você confirmar.
-VOLUME_METAL_RASO = {"F": 81000, "comum": 108000}
-
-# Tamanhos de peça (classificação que você definiu) com volume médio estimado
-# (cm³) por peça dobrada. ⚠️ ESTES VOLUMES SÃO UMA ESTIMATIVA MINHA — ajuste
-# aqui se tiver a medida real, é o único lugar que precisa mudar.
-TAMANHOS_PECA = {
-    "PP": {"nome": "PP - Body/Top/Biquíni", "volume_cm3": 150, "exemplos": "Body, top, biquíni, cropped, underwear"},
-    "P":  {"nome": "P - Camiseta/Polo",      "volume_cm3": 250, "exemplos": "Camiseta, polo, regata"},
-    "M":  {"nome": "M - Camisa/Suéter/Sarja","volume_cm3": 400, "exemplos": "Camisa, suéter, calça sarja, calça tecido"},
-    "G":  {"nome": "G - Jeans/Corta-Vento",  "volume_cm3": 700, "exemplos": "Calça jeans, corta-vento, blusa manga longa, moletom"},
-    "GG": {"nome": "GG - Jaqueta/Casaco",    "volume_cm3": 2500, "exemplos": "Bomber, jaqueta pesada, casaco (só madeira/metal)"},
+CAPACIDADE_VERAO_FEMININO = {
+    "Regatas/Bodys/Tops/Croppeds":              {"P": (8, 10),  "M": (16, 20), "G": (35, 40), "Metal Raso (GG)": (80, 100),  "Madeira/Metal Prof. (3G)": (180, 220)},
+    "Camisetas/Camisas M.Curta Finas":          {"P": (7, 8),   "M": (14, 16), "G": (28, 32), "Metal Raso (GG)": (60, 70),   "Madeira/Metal Prof. (3G)": (130, 160)},
+    "Shorts Finos/Bermudas Verão/Saia":         {"P": (5, 6),   "M": (10, 12), "G": (20, 24), "Metal Raso (GG)": (45, 55),   "Madeira/Metal Prof. (3G)": (100, 120)},
+    "Calças Leves (Sarja Fina, Viscose, Linho)":{"P": (3, 4),   "M": (7, 8),   "G": (14, 16), "Metal Raso (GG)": (30, 35),   "Madeira/Metal Prof. (3G)": (65, 80)},
+    "Conjuntos Leves/Macaquinhos":              {"P": (3, 4),   "M": (6, 8),   "G": (12, 15), "Metal Raso (GG)": (25, 30),   "Madeira/Metal Prof. (3G)": (55, 70)},
+    "Macacões/Vestidos Curtos":                 {"P": (2, 3),   "M": (5, 6),   "G": (10, 12), "Metal Raso (GG)": (20, 25),   "Madeira/Metal Prof. (3G)": (45, 55)},
+    "Vestidos Longos":                          {"P": (1, 2),   "M": (3, 4),   "G": (7, 8),   "Metal Raso (GG)": (15, 18),   "Madeira/Metal Prof. (3G)": (30, 40)},
 }
 
-# Marca de estação: tag que acompanha a peça (não define mais um "modo global"
-# do sistema — várias estações convivem ao mesmo tempo no estoque real).
+CAPACIDADE_INVERNO_FEMININO = {
+    "Camisetas M.Longa/Cacharrel Fina":     {"P": (5, 6), "M": (10, 12), "G": (20, 24), "Metal Raso (GG)": (40, 50), "Madeira/Metal Prof. (3G)": (90, 110)},
+    "Tricots Leves/Blusões Finos":          {"P": (3, 4), "M": (6, 8),   "G": (12, 15), "Metal Raso (GG)": (25, 30), "Madeira/Metal Prof. (3G)": (55, 70)},
+    "Calças Jeans/Moletons/Corduroy":       {"P": (2, 3), "M": (4, 5),   "G": (8, 10),  "Metal Raso (GG)": (20, 25), "Madeira/Metal Prof. (3G)": (45, 55)},
+    "Jaquetas Leves/Corta-Vento/Blazers":   {"P": (1, 2), "M": (3, 4),   "G": (6, 8),   "Metal Raso (GG)": (15, 18), "Madeira/Metal Prof. (3G)": (30, 40)},
+    "Jaquetas Pesadas/Casacos/Parkas":      {"P": None,   "M": None,     "G": None,     "Metal Raso (GG)": (8, 12),  "Madeira/Metal Prof. (3G)": (20, 30)},
+}
+
+# ⚠️ PLACEHOLDER: ainda não recebi a tabela real de capacidade do estoque
+# MASCULINO. Até você me passar os números, as ruas masculinas usam a
+# tabela feminina como estimativa provisória (a UI avisa isso claramente).
+CAPACIDADE_VERAO_MASCULINO = CAPACIDADE_VERAO_FEMININO
+CAPACIDADE_INVERNO_MASCULINO = CAPACIDADE_INVERNO_FEMININO
+
 ESTACOES_PECA = ["Verão", "Inverno", "Meia-Estação"]
 
-# Tamanho de referência usado para estimar "quantas peças cabem" na tela do
-# Visualizador (o cálculo de ocupação real, porém, é sempre feito por volume,
-# somando o mix real de tamanhos que está em cada casulo).
-TAMANHO_REFERENCIA_POR_TIPO = {
-    "aramado_P": "PP",
+def obter_tabelas_genero(genero):
+    if genero == "Masculino":
+        return CAPACIDADE_VERAO_MASCULINO, CAPACIDADE_INVERNO_MASCULINO
+    return CAPACIDADE_VERAO_FEMININO, CAPACIDADE_INVERNO_FEMININO
+
+def obter_categorias_disponiveis(estacao, genero):
+    tabela_verao, tabela_inverno = obter_tabelas_genero(genero)
+    tabela = tabela_inverno if estacao == "Inverno" else tabela_verao
+    return list(tabela.keys())
+
+# Meia-Estação não teve tabela própria na apresentação — reaproveita a de
+# Verão (feminina ou masculina, conforme a rua) até você me passar uma
+# tabela específica.
+CATEGORIAS_POR_ESTACAO_FEMININO = {
+    "Verão": list(CAPACIDADE_VERAO_FEMININO.keys()),
+    "Meia-Estação": list(CAPACIDADE_VERAO_FEMININO.keys()),
+    "Inverno": list(CAPACIDADE_INVERNO_FEMININO.keys()),
+}
+CATEGORIAS_POR_ESTACAO_MASCULINO = {
+    "Verão": list(CAPACIDADE_VERAO_MASCULINO.keys()),
+    "Meia-Estação": list(CAPACIDADE_VERAO_MASCULINO.keys()),
+    "Inverno": list(CAPACIDADE_INVERNO_MASCULINO.keys()),
+}
+
+def obter_categorias_por_estacao(genero):
+    return CATEGORIAS_POR_ESTACAO_MASCULINO if genero == "Masculino" else CATEGORIAS_POR_ESTACAO_FEMININO
+
+# Tipo estrutural do casulo (retornado por obter_especificacao_casulo) mapeado
+# para a categoria de casulo usada nas tabelas acima.
+CATEGORIA_CASULO_POR_TIPO_ESTRUTURAL = {
+    "aramado_P": "P",
     "aramado_M": "M",
     "aramado_G": "G",
-    "madeira": "GG",
-    "metal": "GG",
+    "metal_raso": "Metal Raso (GG)",
+    "metal_profundo": "Madeira/Metal Prof. (3G)",
+    "madeira": "Madeira/Metal Prof. (3G)",
+}
+
+# Categoria usada só como referência para mostrar um número de capacidade no
+# Visualizador (existe nas duas tabelas, com número real em todos os 5 tipos
+# de casulo). A % de ocupação real do nicho sempre vem do mix de fato guardado.
+CATEGORIA_REFERENCIA_DISPLAY = "Camisetas/Camisas M.Curta Finas"
+
+# ==========================================
+# ATUALIZAÇÃO — Documento "Diretrizes e Parâmetros Operacionais" (Verão)
+# ==========================================
+# Travas rígidas de ergonomia — valem em qualquer rua, sobrepõem a tabela de
+# categoria quando o resultado dela for maior que a trava.
+TRAVA_MAXIMA_P = 6              # "6 a 7 peças" -> uso o mínimo, mais conservador
+TRAVA_MAXIMA_M_VESTIDOS = 4     # vestidos em casulo M
+
+# Densidade FIXA por rua x tipo estrutural — fonte de verdade mais recente
+# para as ruas MASCULINAS (15 a 21). Casulos GG e "Caixote" ficam de fora por
+# enquanto (aguardando mapeamento físico exato). Onde não há densidade fixa
+# aqui (feminino, e os tipos GG/madeira ainda não cobertos), o sistema cai
+# para a tabela por categoria.
+CAPACIDADE_FIXA_POR_RUA = {
+    "Rua 15": {"aramado_M": 7, "aramado_G": 12},
+    "Rua 16": {"aramado_G": 10},
+    "Rua 17": {"aramado_G": 12},
+    "Rua 18": {"aramado_M": 12},
+    "Rua 19": {"aramado_P": 6},
+    "Rua 20": {"aramado_P": 6},
+    "Rua 21": {"metal_raso": 40},
 }
 
 def obter_chave_casulo(rua_nome, lado, coluna, nivel):
@@ -96,14 +167,14 @@ def obter_chave_casulo(rua_nome, lado, coluna, nivel):
         col_int = 1
     return f"{rua_nome}|{lado}|{col_int:03d}|{str(nivel).upper()}"
 
-def obter_chave_estoque(tamanho, estacao):
-    return f"{tamanho}|{estacao}"
+def obter_chave_estoque(categoria_peca, estacao):
+    return f"{categoria_peca}|{estacao}"
 
 def obter_especificacao_casulo(rua_nome, coluna, lado="impar"):
     """
-    Retorna a especificação física real de uma coluna/lado de uma rua:
-    níveis válidos, tipo estrutural (aramado_P/aramado_M/aramado_G/madeira/metal),
-    descrição e volume unitário (cm³) de cada nível.
+    Retorna a especificação física de uma coluna/lado de uma rua: níveis
+    válidos, tipo estrutural (aramado_P/aramado_M/aramado_G/madeira/
+    metal_profundo/metal_raso) e descrição.
     """
     try:
         col = int(coluna)
@@ -112,7 +183,7 @@ def obter_especificacao_casulo(rua_nome, coluna, lado="impar"):
 
     config = ESTRUTURA_CD.get(rua_nome, {})
     tipo = config.get("tipo", "")
-    vazio = {"niveis": [], "tipo_estrutural": None, "tipo_desc": "Inexistente", "volumes": {}}
+    vazio = {"niveis": [], "tipo_estrutural": None, "tipo_desc": "Inexistente"}
 
     if tipo == "Inexistente":
         return vazio
@@ -124,95 +195,111 @@ def obter_especificacao_casulo(rua_nome, coluna, lado="impar"):
         is_metal = True
 
     if is_metal:
-        vols = {n: (VOLUME_METAL_RASO["F"] if n == "F" else VOLUME_METAL_RASO["comum"]) for n in NIVEIS_METAL_5}
-        return {"niveis": NIVEIS_METAL_5, "tipo_estrutural": "metal", "tipo_desc": "Metal Infiltrado", "volumes": vols}
+        return {"niveis": NIVEIS_METAL_5, "tipo_estrutural": "metal_raso", "tipo_desc": "Metal Infiltrado"}
 
     if tipo in ("Aramado_P_Seq_20", "P"):
-        vols = {n: VOLUME_ARAMADO_P for n in NIVEIS_P}
-        return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Pequeno (P)", "volumes": vols}
+        return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Pequeno (P)"}
     elif tipo == "G":
-        vols = {n: VOLUME_ARAMADO_G for n in NIVEIS_G}
-        return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)", "volumes": vols}
+        return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)"}
     elif tipo == "M":
-        vols = {n: VOLUME_ARAMADO_M for n in NIVEIS_M}
-        return {"niveis": NIVEIS_M, "tipo_estrutural": "aramado_M", "tipo_desc": "Médio (M)", "volumes": vols}
+        return {"niveis": NIVEIS_M, "tipo_estrutural": "aramado_M", "tipo_desc": "Médio (M)"}
     elif tipo == "G_Unilateral":
         if lado == "par":
-            vols = {n: VOLUME_ARAMADO_G for n in NIVEIS_G}
-            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G) - Unilateral", "volumes": vols}
+            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G) - Unilateral"}
         else:
             return vazio
     elif tipo == "Metal_Seq_21":
-        vols = {n: (VOLUME_METAL_RASO["F"] if n == "F" else VOLUME_METAL_RASO["comum"]) for n in NIVEIS_METAL_5}
-        return {"niveis": NIVEIS_METAL_5, "tipo_estrutural": "metal", "tipo_desc": "Metal Sequencial Rua 21", "volumes": vols}
+        return {"niveis": NIVEIS_METAL_5, "tipo_estrutural": "metal_raso", "tipo_desc": "Metal Sequencial Rua 21"}
     elif tipo == "Especial_Rua_14":
         if 1 <= col <= 23:
-            niveis_14 = ["D", "G", "J", "M", "P"]
-            if col in (1, 4, 9):
-                v_comum, v_p = 303360, 376320
-            elif col == 6:
-                v_comum, v_p = 223965, 277830
-            elif col == 19:
-                v_comum, v_p = 507180, 629160
-            elif col == 21:
-                v_comum, v_p = 274920, 341040
-            else:
-                v_comum, v_p = 355500, 441000
-            vols = {n: (v_p if n == "P" else v_comum) for n in niveis_14}
-            return {"niveis": niveis_14, "tipo_estrutural": "madeira", "tipo_desc": "Rua 14 - Madeira Gigante", "volumes": vols}
+            return {"niveis": ["D", "G", "J", "M", "P"], "tipo_estrutural": "madeira", "tipo_desc": "Rua 14 - Madeira Gigante"}
         elif 24 <= col <= 31:
-            niveis_14 = ["B", "C", "D", "E", "F"]
-            vols = {n: (VOLUME_METAL_PROFUNDO["F"] if n == "F" else VOLUME_METAL_PROFUNDO["comum"]) for n in niveis_14}
-            return {"niveis": niveis_14, "tipo_estrutural": "metal", "tipo_desc": "Rua 14 - Metal Profundo", "volumes": vols}
+            return {"niveis": NIVEIS_METAL_5, "tipo_estrutural": "metal_profundo", "tipo_desc": "Rua 14 - Metal Profundo"}
         elif 42 <= col <= 48:
-            niveis_14 = ["B", "C", "D", "E", "F"]
-            vols = {n: (VOLUME_METAL_RASO["F"] if n == "F" else VOLUME_METAL_RASO["comum"]) for n in niveis_14}
-            return {"niveis": niveis_14, "tipo_estrutural": "metal", "tipo_desc": "Rua 14 - Metal Raso", "volumes": vols}
+            return {"niveis": NIVEIS_METAL_5, "tipo_estrutural": "metal_raso", "tipo_desc": "Rua 14 - Metal Raso"}
         else:
             return vazio
     elif tipo == "Misto_Transicao":
         if col < 103:
-            vols = {n: VOLUME_ARAMADO_P for n in NIVEIS_P}
-            return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Pequeno (P)", "volumes": vols}
+            return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Pequeno (P)"}
         else:
-            vols = {n: VOLUME_ARAMADO_G for n in NIVEIS_G}
-            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)", "volumes": vols}
+            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)"}
     elif tipo == "Misto_Lado":
         if lado == "par":
-            vols = {n: VOLUME_ARAMADO_G for n in NIVEIS_G}
-            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)", "volumes": vols}
+            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)"}
         else:
-            vols = {n: VOLUME_ARAMADO_P for n in NIVEIS_P}
-            return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Pequeno (P)", "volumes": vols}
+            return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Pequeno (P)"}
     elif tipo == "Misto_Lado_15":
         if lado == "par":
-            vols = {n: VOLUME_ARAMADO_M for n in NIVEIS_M}
-            return {"niveis": NIVEIS_M, "tipo_estrutural": "aramado_M", "tipo_desc": "Médio (M)", "volumes": vols}
+            return {"niveis": NIVEIS_M, "tipo_estrutural": "aramado_M", "tipo_desc": "Médio (M)"}
         else:
-            vols = {n: VOLUME_ARAMADO_G for n in NIVEIS_G}
-            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)", "volumes": vols}
+            return {"niveis": NIVEIS_G, "tipo_estrutural": "aramado_G", "tipo_desc": "Grande (G)"}
 
-    vols = {n: VOLUME_ARAMADO_P for n in NIVEIS_P}
-    return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Padrão", "volumes": vols}
+    return {"niveis": NIVEIS_P, "tipo_estrutural": "aramado_P", "tipo_desc": "Padrão"}
+
+def obter_faixa_categoria(categoria_peca, tipo_estrutural, estacao, rua_nome):
+    """Faixa (mín,máx) pura da tabela por categoria — usada só para checar a
+    regra de PERMISSÃO (ex: Jaquetas Pesadas = None = proibido em P/M/G),
+    independente de haver densidade fixa por rua."""
+    genero = obter_genero_rua(rua_nome)
+    tabela_verao, tabela_inverno = obter_tabelas_genero(genero)
+    tabela = tabela_inverno if estacao == "Inverno" else tabela_verao
+    categoria_casulo = CATEGORIA_CASULO_POR_TIPO_ESTRUTURAL.get(tipo_estrutural, "P")
+    return tabela.get(categoria_peca, {}).get(categoria_casulo)
+
+def peca_permitida(categoria_peca, tipo_estrutural, estacao, rua_nome):
+    return obter_faixa_categoria(categoria_peca, tipo_estrutural, estacao, rua_nome) is not None
+
+def obter_faixa_capacidade(categoria_peca, tipo_estrutural, estacao, rua_nome):
+    """Faixa exibida na tela: densidade fixa da rua quando existir, senão a
+    faixa da tabela por categoria."""
+    fixa = CAPACIDADE_FIXA_POR_RUA.get(rua_nome, {}).get(tipo_estrutural)
+    if fixa is not None:
+        return (fixa, fixa)
+    return obter_faixa_categoria(categoria_peca, tipo_estrutural, estacao, rua_nome)
+
+def obter_capacidade_minima(categoria_peca, tipo_estrutural, estacao, rua_nome):
+    # A proibição (ex: Jaquetas Pesadas em aramado) vale sempre, mesmo em
+    # ruas com densidade fixa.
+    if not peca_permitida(categoria_peca, tipo_estrutural, estacao, rua_nome):
+        return 0
+
+    fixa = CAPACIDADE_FIXA_POR_RUA.get(rua_nome, {}).get(tipo_estrutural)
+    if fixa is not None:
+        return fixa
+
+    faixa = obter_faixa_categoria(categoria_peca, tipo_estrutural, estacao, rua_nome)
+    valor = faixa[0] if faixa else 0
+    if valor and tipo_estrutural == "aramado_P":
+        valor = min(valor, TRAVA_MAXIMA_P)
+    if valor and tipo_estrutural == "aramado_M" and "Vestido" in categoria_peca:
+        valor = min(valor, TRAVA_MAXIMA_M_VESTIDOS)
+    return valor
+
+def obter_capacidade_estimada_exibicao(tipo_estrutural, rua_nome):
+    fixa = CAPACIDADE_FIXA_POR_RUA.get(rua_nome, {}).get(tipo_estrutural)
+    if fixa is not None:
+        return fixa
+    return obter_capacidade_minima(CATEGORIA_REFERENCIA_DISPLAY, tipo_estrutural, "Verão", rua_nome)
 
 def calcular_pecas_totais(dados_casulo):
     return sum(dados_casulo.values()) if dados_casulo else 0
 
-def calcular_volume_ocupado_cm3(dados_casulo):
+def calcular_fracao_ocupada(dados_casulo, tipo_estrutural, rua_nome):
+    """
+    % de ocupação real do casulo, considerando o mix de categorias/estações
+    guardado nele. Cada combinação consome capacidade proporcional ao seu
+    próprio mínimo de faixa (fração = qtd / capacidade_mínima daquela peça).
+    """
     if not dados_casulo:
-        return 0
-    total = 0
+        return 0.0
+    fracao = 0.0
     for chave_combo, qtd in dados_casulo.items():
-        tamanho = chave_combo.split("|")[0]
-        total += qtd * TAMANHOS_PECA.get(tamanho, {}).get("volume_cm3", 0)
-    return total
-
-def obter_capacidade_estimada_pecas(tipo_estrutural, volume_nivel_cm3):
-    tamanho_ref = TAMANHO_REFERENCIA_POR_TIPO.get(tipo_estrutural, "M")
-    volume_peca_ref = TAMANHOS_PECA.get(tamanho_ref, {}).get("volume_cm3", 1)
-    if not volume_peca_ref:
-        return 0
-    return volume_nivel_cm3 // volume_peca_ref
+        categoria_peca, estacao = chave_combo.split("|", 1)
+        cap_min = obter_capacidade_minima(categoria_peca, tipo_estrutural, estacao, rua_nome)
+        if cap_min > 0:
+            fracao += qtd / cap_min
+    return fracao
 
 def montar_html_nicho(rua_selecionada, col_num, nivel, spec, chave_lado):
     if nivel not in spec["niveis"]:
@@ -221,10 +308,8 @@ def montar_html_nicho(rua_selecionada, col_num, nivel, spec, chave_lado):
     chave = obter_chave_casulo(rua_selecionada, chave_lado, col_num, nivel)
     dados_casulo = st.session_state.base_dados_cd.get(chave, {})
     pecas_atuais = calcular_pecas_totais(dados_casulo)
-    volume_ocupado = calcular_volume_ocupado_cm3(dados_casulo)
-    volume_nivel = spec["volumes"].get(nivel, 0)
-    capacidade_estimada = obter_capacidade_estimada_pecas(spec["tipo_estrutural"], volume_nivel)
-    pct_ocupacao = (volume_ocupado / volume_nivel * 100) if volume_nivel > 0 else 0
+    capacidade_estimada = obter_capacidade_estimada_exibicao(spec["tipo_estrutural"], rua_selecionada)
+    pct_ocupacao = calcular_fracao_ocupada(dados_casulo, spec["tipo_estrutural"], rua_selecionada) * 100
 
     status = "livre"
     if pct_ocupacao >= 100: status = "saturado"
@@ -234,7 +319,7 @@ def montar_html_nicho(rua_selecionada, col_num, nivel, spec, chave_lado):
     is_destaque = (st.session_state.busca_destaque and st.session_state.busca_destaque['rua'] == rua_selecionada and st.session_state.busca_destaque['nivel'] == nivel and st.session_state.busca_destaque['col'] == col_num)
     classe_destaque = "destaque-ativo" if is_destaque else ""
 
-    return f"<div class='nicho {status} {classe_destaque}' title='{col_num:03d}-{nivel} | {pecas_atuais}/{capacidade_estimada} peças ({pct_ocupacao:.1f}% do volume)'>{pecas_atuais}/{capacidade_estimada}</div>"
+    return f"<div class='nicho {status} {classe_destaque}' title='{col_num:03d}-{nivel} | {pecas_atuais}/{capacidade_estimada} peças ({pct_ocupacao:.1f}% da capacidade)'>{pecas_atuais}/{capacidade_estimada}</div>"
 
 def renderizar_cabecalho_colunas(lista_colunas):
     grid_header = st.columns(len(lista_colunas) + 1)
@@ -267,10 +352,6 @@ if 'busca_destaque' not in st.session_state:
 if 'aba_ativa_selecionada' not in st.session_state:
     st.session_state.aba_ativa_selecionada = "🏠 Tela Inicial (Geral)"
 
-# Base de usuários (login/senha/papel). Guardada em memória (session_state),
-# assim como o restante da base de dados do sistema — reinicia se a página
-# recarregar. Papel "gerente" tem acesso à aba Gerenciador e a funções críticas;
-# papel "operador" tem acesso apenas às telas operacionais.
 USUARIOS_PADRAO = {
     "admin": {"senha": "admin123", "papel": "gerente"}
 }
@@ -540,10 +621,9 @@ st.markdown("""
 # TELA 1: TELA INICIAL (PAINEL GERAL)
 # ==========================================
 if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
-    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📊 Painel Geral de Ocupação por Volume</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📊 Painel Geral de Ocupação</h3>", unsafe_allow_html=True)
 
-    total_volume_capacidade_cm3 = 0
-    total_volume_ocupado_cm3 = 0
+    soma_fracoes_geral = 0.0
     total_pecas_atuais = 0
     casulos_livres = 0
     total_casulos = len(st.session_state.base_dados_cd)
@@ -552,24 +632,22 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
         r_nome, lado, c_str, n = chave.split("|")
         l_param = "par" if r_nome == "Rua 11" else ("impar" if lado == "seq" else lado)
         spec = obter_especificacao_casulo(r_nome, int(c_str), l_param)
-        volume_nivel = spec["volumes"].get(n, 0)
-        total_volume_capacidade_cm3 += volume_nivel
         pecas_casulo = calcular_pecas_totais(dados_casulo)
-        total_volume_ocupado_cm3 += calcular_volume_ocupado_cm3(dados_casulo)
+        soma_fracoes_geral += calcular_fracao_ocupada(dados_casulo, spec["tipo_estrutural"], r_nome)
         total_pecas_atuais += pecas_casulo
         if pecas_casulo == 0:
             casulos_livres += 1
 
-    pct_geral = (total_volume_ocupado_cm3 / total_volume_capacidade_cm3 * 100) if total_volume_capacidade_cm3 > 0 else 0.0
+    pct_geral = (soma_fracoes_geral / total_casulos * 100) if total_casulos > 0 else 0.0
 
     kcol1, kcol2, kcol3, kcol4 = st.columns(4)
     with kcol1: st.markdown(f"<div class='card-dashboard'><h5>Total Casulos</h5><h2>{total_casulos:,}</h2></div>", unsafe_allow_html=True)
-    with kcol2: st.markdown(f"<div class='card-dashboard'><h5>Ocupação por Volume</h5><h2>{pct_geral:.1f}%</h2></div>", unsafe_allow_html=True)
+    with kcol2: st.markdown(f"<div class='card-dashboard'><h5>Ocupação Média</h5><h2>{pct_geral:.1f}%</h2></div>", unsafe_allow_html=True)
     with kcol3: st.markdown(f"<div class='card-dashboard'><h5>Casulos Zerados</h5><h2>{casulos_livres:,}</h2></div>", unsafe_allow_html=True)
     with kcol4: st.markdown(f"<div class='card-dashboard'><h5>Peças Armazenadas</h5><h2>{total_pecas_atuais:,} un</h2></div>", unsafe_allow_html=True)
 
     st.write("---")
-    st.markdown("<h4 style='text-align: center; color: #ffcc00;'>🗺️ Mapa de Calor por Rua (Ocupação por Volume)</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center; color: #ffcc00;'>🗺️ Mapa de Calor por Rua</h4>", unsafe_allow_html=True)
 
     def obter_classe_cor(pct):
         if pct == 0: return "cor-verde"
@@ -596,17 +674,17 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
                 """, unsafe_allow_html=True)
             continue
 
-        v_rua_max = 0
-        v_rua_atual = 0
+        soma_fracoes_rua = 0.0
+        contagem_rua = 0
         for chave, dados_casulo in st.session_state.base_dados_cd.items():
             r_n, lado_r, c_r, n_r = chave.split("|")
             if r_n == rua:
                 l_param = "par" if rua == "Rua 11" else ("impar" if lado_r == "seq" else lado_r)
                 spec_r = obter_especificacao_casulo(rua, int(c_r), l_param)
-                v_rua_max += spec_r["volumes"].get(n_r, 0)
-                v_rua_atual += calcular_volume_ocupado_cm3(dados_casulo)
+                soma_fracoes_rua += calcular_fracao_ocupada(dados_casulo, spec_r["tipo_estrutural"], rua)
+                contagem_rua += 1
 
-        pct_rua = (v_rua_atual / v_rua_max * 100) if v_rua_max > 0 else 0.0
+        pct_rua = (soma_fracoes_rua / contagem_rua * 100) if contagem_rua > 0 else 0.0
         classe_cor = obter_classe_cor(pct_rua)
         dados_ranking.append({"Rua": rua, "Ocupação (%)": round(pct_rua, 1)})
 
@@ -614,7 +692,7 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
             st.markdown(f"""
             <div class="planta-rua-bloco">
                 <div style="font-weight: bold; font-size: 15px; color: #ffcc00;">{rua}</div>
-                <div style="font-size: 12px; margin-top: 2px; color: #8892b0;">{pct_rua:.1f}% ocupado (volume)</div>
+                <div style="font-size: 12px; margin-top: 2px; color: #8892b0;">{pct_rua:.1f}% ocupado</div>
                 <div class="bar-container">
                     <div class="bar-fill {classe_cor}" style="width: {pct_rua}%;"></div>
                 </div>
@@ -660,14 +738,14 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
 
         st.markdown("""
         <div class="topicos-legenda">
-            <b style="color: #ffcc00; display: block; margin-bottom: 6px; text-align: center;">📋 Legenda de Ocupação por Volume de Estoque:</b>
+            <b style="color: #ffcc00; display: block; margin-bottom: 6px; text-align: center;">📋 Legenda de Ocupação (tabela de capacidade real):</b>
             <ul>
                 <li><span style="color: #45a29e; font-weight: bold;">Verde:</span> Disponível / Baixa (&lt; 50%)</li>
                 <li><span style="color: #ffcc00; font-weight: bold;">Amarelo:</span> Moderado (50% a 80%)</li>
                 <li><span style="color: #f39c12; font-weight: bold;">Laranja:</span> Alerta (81% a 99%)</li>
                 <li><span style="color: #e74c3c; font-weight: bold;">Vermelho:</span> Saturado (100%)</li>
                 <li>Dentro do casulo: <b>peças atuais / capacidade estimada</b>. A coluna aparece na linha de cabeçalho, acima da grade.</li>
-                <li>⚠️ Peças <b>GG</b> (jaquetas pesadas/casacos) só podem ser lançadas em casulos de <b>madeira ou metal</b>.</li>
+                <li>⚠️ Jaquetas Pesadas/Casacos/Parkas só podem ser lançadas em casulos de <b>Metal Raso ou Madeira/Metal Profundo</b>.</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -890,7 +968,7 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
 # ==========================================
 elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos":
     st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🔍 Auditoria Rápida de Múltiplos Casulos</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8892b0;'>Selecione ou insira endereços para auditar simultaneamente a ocupação por volume.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #8892b0;'>Selecione ou insira endereços para auditar simultaneamente a ocupação.</p>", unsafe_allow_html=True)
 
     chaves_disponiveis = sorted(list(st.session_state.base_dados_cd.keys()))
 
@@ -904,7 +982,7 @@ elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos
         st.info("💡 Nenhum casulo selecionado acima. Utilize a caixa de seleção para escolher os endereços que deseja auditar.")
     else:
         st.write("---")
-        st.caption("Para lançar ou ajustar quantidades, use a aba 📥 Entrada de Dados (o lançamento precisa do tamanho e da estação da peça).")
+        st.caption("Para lançar ou ajustar quantidades, use a aba 📥 Entrada de Dados (o lançamento precisa da categoria da peça e da estação).")
         cols_cards = st.columns(3)
 
         for idx, chave in enumerate(casulos_selecionados):
@@ -914,26 +992,24 @@ elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos
 
             l_param = "par" if r_nome == "Rua 11" else ("impar" if lado_n == "seq" else lado_n)
             spec = obter_especificacao_casulo(r_nome, col_num, l_param)
-            volume_nivel = spec["volumes"].get(nivel_n, 0)
             dados_casulo = st.session_state.base_dados_cd.get(chave, {})
             pecas_atuais = calcular_pecas_totais(dados_casulo)
-            volume_ocupado = calcular_volume_ocupado_cm3(dados_casulo)
-            pct = (volume_ocupado / volume_nivel * 100) if volume_nivel > 0 else 0.0
-            capacidade_estimada = obter_capacidade_estimada_pecas(spec["tipo_estrutural"], volume_nivel)
+            pct = calcular_fracao_ocupada(dados_casulo, spec["tipo_estrutural"], r_nome) * 100
+            capacidade_estimada = obter_capacidade_estimada_exibicao(spec["tipo_estrutural"], r_nome)
 
             c_cor = "cor-verde"
             if pct >= 100: c_cor = "cor-vermelho"
             elif pct >= 81: c_cor = "cor-laranja"
             elif pct >= 50: c_cor = "cor-amarelo"
 
-            breakdown_txt = ", ".join([f"{combo.replace('|', ' ')}: {qtd}" for combo, qtd in dados_casulo.items() if qtd > 0]) or "Vazio"
+            breakdown_txt = ", ".join([f"{combo.replace('|', ' - ')}: {qtd}" for combo, qtd in dados_casulo.items() if qtd > 0]) or "Vazio"
 
             with col_alvo_card:
                 st.markdown(f"""
                 <div class="card-dashboard" style="margin-bottom: 15px; text-align: left; padding: 15px;">
                     <div style="font-size: 13px; font-weight: bold; color: #ffcc00; margin-bottom: 5px;">📍 {r_nome} ({lado_n.upper()})</div>
                     <div style="font-size: 12px; color: #c5c6c7;">Coluna: <b>{col_num:03d}</b> | Nível: <b>{nivel_n}</b> | Tipo: <b>{spec['tipo_desc']}</b></div>
-                    <div style="font-size: 16px; font-weight: bold; color: #fff; margin: 8px 0;">{pecas_atuais:,} / {capacidade_estimada:,} un <span style="font-size: 12px; color: #8892b0;">({pct:.1f}% do volume)</span></div>
+                    <div style="font-size: 16px; font-weight: bold; color: #fff; margin: 8px 0;">{pecas_atuais:,} / {capacidade_estimada:,} un <span style="font-size: 12px; color: #8892b0;">({pct:.1f}%)</span></div>
                     <div class="bar-container">
                         <div class="bar-fill {c_cor}" style="width: {min(pct, 100.0)}%;"></div>
                     </div>
@@ -946,16 +1022,24 @@ elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos
 # TELA 4: ENTRADA DE DADOS / ABASTECIMENTO
 # ==========================================
 elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abastecimento":
-    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📥 Entrada de Dados por Tamanho e Estação</h3>", unsafe_allow_html=True)
-    st.markdown(f"<p style='color: #8892b0; text-align: center;'>Cada lançamento marca a peça com um tamanho (PP a GG) e uma estação (Verão/Inverno/Meia-Estação). Estoques de estações diferentes convivem no mesmo casulo.</p>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📥 Entrada de Dados por Categoria e Estação</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color: #8892b0; text-align: center;'>Cada lançamento marca a peça com uma categoria (do tipo Regatas/Bodys/Tops até Jaquetas Pesadas) e uma estação. Estoques de estações diferentes convivem no mesmo casulo.</p>", unsafe_allow_html=True)
 
-    with st.expander("📏 Ver volumes de referência por tamanho (estimados)"):
-        df_tamanhos = pd.DataFrame([
-            {"Tamanho": t, "Nome": d["nome"], "Volume médio (cm³)": d["volume_cm3"], "Exemplos": d["exemplos"]}
-            for t, d in TAMANHOS_PECA.items()
+    with st.expander("📋 Ver tabela de capacidade (Verão / Inverno)"):
+        st.markdown("**Verão** (peças por casulo, faixa mín-máx)")
+        df_verao = pd.DataFrame([
+            {"Categoria": cat, **{tipo: f"{v[0]}-{v[1]}" if v else "Proibido" for tipo, v in tipos.items()}}
+            for cat, tipos in CAPACIDADE_VERAO.items()
         ])
-        st.dataframe(df_tamanhos, use_container_width=True, hide_index=True)
-        st.caption("⚠️ Volumes estimados por mim — ajuste em TAMANHOS_PECA no código se tiver a medida real.")
+        st.dataframe(df_verao, use_container_width=True, hide_index=True)
+
+        st.markdown("**Inverno** (peças por casulo, faixa mín-máx)")
+        df_inverno = pd.DataFrame([
+            {"Categoria": cat, **{tipo: f"{v[0]}-{v[1]}" if v else "Proibido" for tipo, v in tipos.items()}}
+            for cat, tipos in CAPACIDADE_INVERNO.items()
+        ])
+        st.dataframe(df_inverno, use_container_width=True, hide_index=True)
+        st.caption("O sistema usa sempre o valor MÍNIMO da faixa como capacidade real. Meia-Estação reaproveita a tabela de Verão (sem tabela própria ainda).")
 
     tab_cad1, tab_cad2 = st.tabs(["✏️ Atualização de Casulo Individual", "🧹 Ações Globais na Base"])
 
@@ -1001,32 +1085,37 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 else:
                     nivel_cad = st.selectbox("Nível", ["B"], key="ncad_vazio")
 
-            volume_nivel_cad = spec_cad["volumes"].get(nivel_cad, 0)
-            aceita_gg = spec_cad["tipo_estrutural"] in ("madeira", "metal")
-
             lado_chave_cad = "seq" if lado_cad == "seq" else lado_cad
             chave_alvo = obter_chave_casulo(rua_cad, lado_chave_cad, col_cad, nivel_cad)
             dados_casulo_alvo = st.session_state.base_dados_cd.get(chave_alvo, {})
             pecas_atuais_totais = calcular_pecas_totais(dados_casulo_alvo)
-            volume_ocupado_atual = calcular_volume_ocupado_cm3(dados_casulo_alvo)
-            pct_atual = (volume_ocupado_atual / volume_nivel_cad * 100) if volume_nivel_cad > 0 else 0
+            pct_atual = calcular_fracao_ocupada(dados_casulo_alvo, spec_cad["tipo_estrutural"]) * 100
 
-            st.info(f"📦 Casulo {rua_cad} - Col {col_cad:03d} - Nível {nivel_cad} | Tipo: **{spec_cad['tipo_desc']}** | Volume: **{volume_nivel_cad:,} cm³** | Ocupação atual: **{pecas_atuais_totais} peças ({pct_atual:.1f}% do volume)**")
+            st.info(f"📦 Casulo {rua_cad} - Col {col_cad:03d} - Nível {nivel_cad} | Tipo: **{spec_cad['tipo_desc']}** | Ocupação atual: **{pecas_atuais_totais} peças ({pct_atual:.1f}%)**")
 
-            st.markdown("##### Lançar / Ajustar peças por Tamanho e Estação")
-            col_t1, col_t2, col_t3 = st.columns(3)
+            st.markdown("##### Lançar / Ajustar peças por Categoria e Estação")
+            col_t1, col_t2 = st.columns(2)
             with col_t1:
-                opcoes_tamanho = list(TAMANHOS_PECA.keys()) if aceita_gg else [t for t in TAMANHOS_PECA.keys() if t != "GG"]
-                tamanho_cad = st.selectbox("Tamanho", opcoes_tamanho, format_func=lambda t: TAMANHOS_PECA[t]["nome"], key="tamanho_cad")
-            with col_t2:
                 estacao_cad = st.selectbox("Estação (marca da peça)", ESTACOES_PECA, key="estacao_cad")
-            with col_t3:
-                chave_combo_cad = obter_chave_estoque(tamanho_cad, estacao_cad)
-                qtd_existente_combo = dados_casulo_alvo.get(chave_combo_cad, 0)
-                nova_qtd_input = st.number_input("Quantidade", min_value=0, value=int(qtd_existente_combo), step=1, key="qtd_cad")
+            with col_t2:
+                categorias_disponiveis = CATEGORIAS_POR_ESTACAO[estacao_cad]
+                categorias_permitidas = [c for c in categorias_disponiveis if peca_permitida(c, spec_cad["tipo_estrutural"], estacao_cad)]
+                categoria_cad = st.selectbox("Categoria da peça", categorias_permitidas, key="categoria_cad")
 
-            if not aceita_gg:
-                st.caption("⚠️ Este casulo é de aramado — peças GG (jaquetas pesadas/casacos) não são permitidas aqui. Só cabem em madeira ou metal.")
+            faixa_cad = obter_faixa_capacidade(categoria_cad, spec_cad["tipo_estrutural"], estacao_cad)
+            cap_min_cad = faixa_cad[0] if faixa_cad else 0
+
+            chave_combo_cad = obter_chave_estoque(categoria_cad, estacao_cad)
+            qtd_existente_combo = dados_casulo_alvo.get(chave_combo_cad, 0)
+
+            if faixa_cad:
+                st.caption(f"Faixa da tabela: {faixa_cad[0]} a {faixa_cad[1]} peças (sistema usa o mínimo: {faixa_cad[0]}).")
+
+            nova_qtd_input = st.number_input("Quantidade", min_value=0, value=int(qtd_existente_combo), step=1, key="qtd_cad")
+
+            categorias_bloqueadas = [c for c in categorias_disponiveis if c not in categorias_permitidas]
+            if categorias_bloqueadas:
+                st.caption(f"⚠️ Este casulo não aceita: {', '.join(categorias_bloqueadas)} (só cabem em Metal Raso ou Madeira/Metal Profundo).")
 
             if st.button("💾 Salvar Quantidade", type="primary"):
                 dados_atualizados = dict(st.session_state.base_dados_cd.get(chave_alvo, {}))
@@ -1035,7 +1124,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 else:
                     dados_atualizados[chave_combo_cad] = int(nova_qtd_input)
                 st.session_state.base_dados_cd[chave_alvo] = dados_atualizados
-                st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {TAMANHOS_PECA[tamanho_cad]['nome']} / {estacao_cad} = {nova_qtd_input} peças!")
+                st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {categoria_cad} / {estacao_cad} = {nova_qtd_input} peças!")
                 st.rerun()
 
     with tab_cad2:
@@ -1060,24 +1149,26 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                         r_n, l_n, c_n, n_n = k.split("|")
                         l_param_pop = "par" if r_n == "Rua 11" else ("impar" if l_n == "seq" else l_n)
                         spec_pop = obter_especificacao_casulo(r_n, int(c_n), l_param_pop)
-                        aceita_gg_pop = spec_pop["tipo_estrutural"] in ("madeira", "metal")
-                        opcoes_tam_pop = list(TAMANHOS_PECA.keys()) if aceita_gg_pop else [t for t in TAMANHOS_PECA.keys() if t != "GG"]
 
                         if np.random.rand() < 0.35:
                             st.session_state.base_dados_cd[k] = {}
                             continue
 
-                        tamanho_sorteado = np.random.choice(opcoes_tam_pop)
                         estacao_sorteada = np.random.choice(ESTACOES_PECA)
-                        volume_nivel_pop = spec_pop["volumes"].get(n_n, 0)
-                        capacidade_pop = obter_capacidade_estimada_pecas(spec_pop["tipo_estrutural"], volume_nivel_pop)
-                        qtd_sorteada = int(np.random.choice([0, int(capacidade_pop * 0.3), int(capacidade_pop * 0.7), capacidade_pop]))
+                        categorias_disp_pop = CATEGORIAS_POR_ESTACAO[estacao_sorteada]
+                        categorias_ok_pop = [c for c in categorias_disp_pop if peca_permitida(c, spec_pop["tipo_estrutural"], estacao_sorteada)]
+                        if not categorias_ok_pop:
+                            st.session_state.base_dados_cd[k] = {}
+                            continue
+                        categoria_sorteada = np.random.choice(categorias_ok_pop)
+                        cap_min_pop = obter_capacidade_minima(categoria_sorteada, spec_pop["tipo_estrutural"], estacao_sorteada)
+                        qtd_sorteada = int(np.random.choice([0, int(cap_min_pop * 0.3), int(cap_min_pop * 0.7), cap_min_pop]))
 
                         if qtd_sorteada > 0:
-                            st.session_state.base_dados_cd[k] = {obter_chave_estoque(tamanho_sorteado, estacao_sorteada): qtd_sorteada}
+                            st.session_state.base_dados_cd[k] = {obter_chave_estoque(categoria_sorteada, estacao_sorteada): qtd_sorteada}
                         else:
                             st.session_state.base_dados_cd[k] = {}
-                    st.success("Base populada com dados de teste (tamanhos e estações variados)!")
+                    st.success("Base populada com dados de teste (categorias e estações variadas)!")
                     st.rerun()
 
 
