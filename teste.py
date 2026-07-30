@@ -549,6 +549,7 @@ opcoes_telas = [
     "🏠 Tela Inicial (Geral)", 
     "📦 Visualizador de Casulos", 
     "🔍 Consulta Rápida de Casulos", 
+    "📊 Estatísticas de Casulos",
     "📥 Entrada de Dados / Abastecimento"
 ]
 if st.session_state.papel_atual == "gerente":
@@ -1010,6 +1011,103 @@ elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos
                     <div style="font-size: 10px; color: #8892b0; margin-top: 6px;">Mix atual: {breakdown_txt}</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+
+# ==========================================
+# TELA 3.5: ESTATÍSTICAS DE CASULOS (RAIO-X DA ESTRUTURA)
+# ==========================================
+elif st.session_state.aba_ativa_selecionada == "📊 Estatísticas de Casulos":
+    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📊 Estatísticas de Casulos</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #8892b0;'>Raio-X da estrutura física do CD: quantos casulos existem de cada tipo, por gênero e por rua, e a capacidade de referência de cada um.</p>", unsafe_allow_html=True)
+
+    TIPO_ESTRUTURAL_NOME_EXIBICAO = {
+        "aramado_P": "Aramado P",
+        "aramado_M": "Aramado M",
+        "aramado_G": "Aramado G",
+        "metal_raso": "Metal Raso (GG)",
+        "metal_profundo": "Metal Profundo (3G)",
+        "madeira": "Madeira (3G)",
+    }
+
+    linhas_detalhe = []
+    for rua_nome_est, cfg_est in ESTRUTURA_CD.items():
+        if cfg_est.get("tipo") == "Inexistente":
+            continue
+        contagem_rua_tipo = {}
+        lista_lados_est = [("impar", cfg_est.get("cols_impar", [])), ("par", cfg_est.get("cols_par", []))]
+        if "cols_seq" in cfg_est:
+            lista_lados_est = [("seq", cfg_est["cols_seq"])]
+        for lado_est, cols_est in lista_lados_est:
+            for c_est in cols_est:
+                l_param_est = "par" if rua_nome_est == "Rua 11" else ("impar" if lado_est == "seq" else lado_est)
+                spec_est = obter_especificacao_casulo(rua_nome_est, c_est, l_param_est)
+                if not spec_est["tipo_estrutural"]:
+                    continue
+                qtd_niveis = len(spec_est["niveis"])
+                chave_tipo = spec_est["tipo_estrutural"]
+                contagem_rua_tipo[chave_tipo] = contagem_rua_tipo.get(chave_tipo, 0) + qtd_niveis
+
+        genero_est = obter_genero_rua(rua_nome_est)
+        for tipo_est, qtd_est in contagem_rua_tipo.items():
+            cap_unit_est = obter_capacidade_estimada_exibicao(tipo_est, rua_nome_est)
+            linhas_detalhe.append({
+                "Gênero": genero_est,
+                "Rua": rua_nome_est,
+                "Tipo de Casulo": TIPO_ESTRUTURAL_NOME_EXIBICAO.get(tipo_est, tipo_est),
+                "Qtd. Casulos": qtd_est,
+                "Capacidade/Casulo (ref.)": cap_unit_est,
+                "Capacidade Total Estimada": qtd_est * cap_unit_est,
+            })
+
+    df_detalhe_casulos = pd.DataFrame(linhas_detalhe)
+
+    if df_detalhe_casulos.empty:
+        st.info("Nenhum casulo cadastrado ainda.")
+    else:
+        total_casulos_geral = int(df_detalhe_casulos["Qtd. Casulos"].sum())
+        total_cap_geral = int(df_detalhe_casulos["Capacidade Total Estimada"].sum())
+
+        kcol_e1, kcol_e2 = st.columns(2)
+        with kcol_e1:
+            st.markdown(f"<div class='card-dashboard'><h5>Total de Casulos no CD</h5><h2>{total_casulos_geral:,}</h2></div>", unsafe_allow_html=True)
+        with kcol_e2:
+            st.markdown(f"<div class='card-dashboard'><h5>Capacidade Total Estimada</h5><h2>{total_cap_geral:,} un</h2></div>", unsafe_allow_html=True)
+
+        st.write("---")
+        st.markdown("<h4 style='text-align: center; color: #ffcc00;'>👩👨 Resumo por Gênero e Tipo de Casulo</h4>", unsafe_allow_html=True)
+
+        df_resumo_genero_tipo = (
+            df_detalhe_casulos.groupby(["Gênero", "Tipo de Casulo"], as_index=False)
+            .agg({"Qtd. Casulos": "sum", "Capacidade Total Estimada": "sum"})
+            .sort_values(["Gênero", "Tipo de Casulo"])
+        )
+        st.dataframe(df_resumo_genero_tipo, use_container_width=True, hide_index=True)
+
+        st.markdown("<h4 style='text-align: center; color: #ffcc00;'>Totais por Gênero</h4>", unsafe_allow_html=True)
+        df_totais_genero = (
+            df_detalhe_casulos.groupby("Gênero", as_index=False)
+            .agg({"Qtd. Casulos": "sum", "Capacidade Total Estimada": "sum"})
+        )
+        gcol1, gcol2 = st.columns(2)
+        for idx_g, row_g in df_totais_genero.iterrows():
+            alvo = gcol1 if row_g["Gênero"] == "Feminino" else gcol2
+            with alvo:
+                st.markdown(f"""
+                <div class="card-dashboard">
+                    <h5>{'👩 Feminino' if row_g['Gênero'] == 'Feminino' else '👨 Masculino'}</h5>
+                    <h2>{int(row_g['Qtd. Casulos']):,} casulos</h2>
+                    <p style="color:#8892b0; margin-top:4px; font-size:12px;">~{int(row_g['Capacidade Total Estimada']):,} peças de capacidade estimada</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.write("---")
+        with st.expander("🔎 Ver detalhe por Rua"):
+            st.dataframe(
+                df_detalhe_casulos.sort_values(["Gênero", "Rua", "Tipo de Casulo"]),
+                use_container_width=True, hide_index=True
+            )
+
+        st.caption("Capacidade/Casulo (ref.) usa: densidade fixa por rua quando existir (masculino, ruas 15-21), senão a categoria de referência 'Camisetas/Camisas M.Curta Finas' da tabela de Verão. É uma referência pra visão geral — a ocupação real de cada casulo depende do mix de categorias realmente guardado nele.")
 
 
 # ==========================================
