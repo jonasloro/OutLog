@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import random
 import re
 
 # 1. CONFIGURAÇÃO DE PÁGINA
@@ -98,11 +97,6 @@ def obter_tabelas_genero(genero):
     if genero == "Masculino":
         return CAPACIDADE_VERAO_MASCULINO, CAPACIDADE_INVERNO_MASCULINO
     return CAPACIDADE_VERAO_FEMININO, CAPACIDADE_INVERNO_FEMININO
-
-def obter_categorias_disponiveis(estacao, genero):
-    tabela_verao, tabela_inverno = obter_tabelas_genero(genero)
-    tabela = tabela_inverno if estacao == "Inverno" else tabela_verao
-    return list(tabela.keys())
 
 # Meia-Estação não teve tabela própria na apresentação — reaproveita a de
 # Verão (feminina ou masculina, conforme a rua) até você me passar uma
@@ -1112,13 +1106,15 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 categoria_cad = st.selectbox("Categoria da peça", categorias_permitidas, key="categoria_cad")
 
             faixa_cad = obter_faixa_capacidade(categoria_cad, spec_cad["tipo_estrutural"], estacao_cad, rua_cad)
-            cap_min_cad = faixa_cad[0] if faixa_cad else 0
 
             chave_combo_cad = obter_chave_estoque(categoria_cad, estacao_cad)
             qtd_existente_combo = dados_casulo_alvo.get(chave_combo_cad, 0)
 
             if faixa_cad:
-                st.caption(f"Faixa da tabela: {faixa_cad[0]} a {faixa_cad[1]} peças (sistema usa o mínimo: {faixa_cad[0]}).")
+                if faixa_cad[0] == faixa_cad[1]:
+                    st.caption(f"Densidade fixa da rua: {faixa_cad[0]} peças.")
+                else:
+                    st.caption(f"Faixa da tabela: {faixa_cad[0]} a {faixa_cad[1]} peças (sistema usa o mínimo: {faixa_cad[0]}).")
 
             nova_qtd_input = st.number_input("Quantidade", min_value=0, value=int(qtd_existente_combo), step=1, key="qtd_cad")
 
