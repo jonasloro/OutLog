@@ -3,33 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
-from supabase import create_client, Client
 
-# Use as variáveis do Streamlit Secrets (.streamlit/secrets.toml)
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-
-@st.cache_resource
-def get_supabase() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
-supabase = get_supabase()
-
-# Função para carregar o banco para o formato de dicionário do seu app
-def carregar_estoque_supabase():
-    resposta = supabase.table("estoque_casulo").select("chave_casulo, categoria_peca, estacao, quantidade").execute()
-    dados_banco = {}
-    
-    for linha in resposta.data:
-        chave = linha["chave_casulo"]
-        combo = f"{linha['categoria_peca']}|{linha['estacao']}"
-        qtd = linha["quantidade"]
-        
-        if chave not in dados_banco:
-            dados_banco[chave] = {}
-        dados_banco[chave][combo] = qtd
-        
-    return dados_banco
 try:
     import pypdf
     PYPDF_DISPONIVEL = True
