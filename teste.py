@@ -126,6 +126,16 @@ CATEGORIA_CASULO_POR_TIPO_ESTRUTURAL = {
     "madeira": "Madeira/Metal Prof. (3G)",
 }
 
+# Nome amigável de cada tipo estrutural, usado nas telas de Estatísticas e Simulador.
+TIPO_ESTRUTURAL_NOME_EXIBICAO = {
+    "aramado_P": "Aramado P",
+    "aramado_M": "Aramado M",
+    "aramado_G": "Aramado G",
+    "metal_raso": "Metal Raso (GG)",
+    "metal_profundo": "Metal Profundo (3G)",
+    "madeira": "Madeira (3G)",
+}
+
 # Categoria usada só como referência para mostrar um número de capacidade no
 # Visualizador (existe nas duas tabelas, com número real em todos os 5 tipos
 # de casulo). A % de ocupação real do nicho sempre vem do mix de fato guardado.
@@ -550,6 +560,7 @@ opcoes_telas = [
     "📦 Visualizador de Casulos", 
     "🔍 Consulta Rápida de Casulos", 
     "📊 Estatísticas de Casulos",
+    "🧪 Simulador de Capacidade",
     "📥 Entrada de Dados / Abastecimento"
 ]
 if st.session_state.papel_atual == "gerente":
@@ -1020,14 +1031,6 @@ elif st.session_state.aba_ativa_selecionada == "📊 Estatísticas de Casulos":
     st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📊 Estatísticas de Casulos</h3>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #8892b0;'>Raio-X da estrutura física do CD: quantos casulos existem de cada tipo, por gênero e por rua, e a capacidade de referência de cada um.</p>", unsafe_allow_html=True)
 
-    TIPO_ESTRUTURAL_NOME_EXIBICAO = {
-        "aramado_P": "Aramado P",
-        "aramado_M": "Aramado M",
-        "aramado_G": "Aramado G",
-        "metal_raso": "Metal Raso (GG)",
-        "metal_profundo": "Metal Profundo (3G)",
-        "madeira": "Madeira (3G)",
-    }
 
     linhas_detalhe = []
     for rua_nome_est, cfg_est in ESTRUTURA_CD.items():
@@ -1108,6 +1111,103 @@ elif st.session_state.aba_ativa_selecionada == "📊 Estatísticas de Casulos":
             )
 
         st.caption("Capacidade/Casulo (ref.) usa: densidade fixa por rua quando existir (masculino, ruas 15-21), senão a categoria de referência 'Camisetas/Camisas M.Curta Finas' da tabela de Verão. É uma referência pra visão geral — a ocupação real de cada casulo depende do mix de categorias realmente guardado nele.")
+
+
+# ==========================================
+# TELA 3.6: SIMULADOR DE CAPACIDADE
+# ==========================================
+elif st.session_state.aba_ativa_selecionada == "🧪 Simulador de Capacidade":
+    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🧪 Simulador de Capacidade</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #8892b0;'>Teste quantas peças cabem num casulo antes de lançar de verdade — sem alterar nenhum dado do sistema.</p>", unsafe_allow_html=True)
+
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        rua_sim = st.selectbox("Rua", list(ESTRUTURA_CD.keys()), key="rua_sim")
+
+    cfg_sim = ESTRUTURA_CD.get(rua_sim, {})
+
+    if cfg_sim.get("tipo") == "Inexistente":
+        st.error(f"⚠️ A {rua_sim} é inexistente.")
+    else:
+        lista_lados_sim = [("impar", cfg_sim.get("cols_impar", [])), ("par", cfg_sim.get("cols_par", []))]
+        if "cols_seq" in cfg_sim:
+            lista_lados_sim = [("seq", cfg_sim["cols_seq"])]
+
+        tipos_presentes_sim = set()
+        for lado_sim, cols_sim in lista_lados_sim:
+            for c_sim in cols_sim:
+                l_param_sim = "par" if rua_sim == "Rua 11" else ("impar" if lado_sim == "seq" else lado_sim)
+                spec_sim_scan = obter_especificacao_casulo(rua_sim, c_sim, l_param_sim)
+                if spec_sim_scan["tipo_estrutural"]:
+                    tipos_presentes_sim.add(spec_sim_scan["tipo_estrutural"])
+
+        with col_s2:
+            tipo_sim = st.selectbox(
+                "Tipo de Casulo", sorted(tipos_presentes_sim),
+                format_func=lambda t: TIPO_ESTRUTURAL_NOME_EXIBICAO.get(t, t), key="tipo_sim"
+            )
+
+        col_s3, col_s4 = st.columns(2)
+        with col_s3:
+            estacao_sim = st.selectbox("Estação (marca da peça)", ESTACOES_PECA, key="estacao_sim")
+        with col_s4:
+            categorias_disp_sim = obter_categorias_por_estacao(obter_genero_rua(rua_sim))[estacao_sim]
+            categorias_ok_sim = [c for c in categorias_disp_sim if peca_permitida(c, tipo_sim, estacao_sim, rua_sim)]
+            if categorias_ok_sim:
+                categoria_sim = st.selectbox("Categoria da peça", categorias_ok_sim, key="categoria_sim")
+            else:
+                categoria_sim = None
+
+        if not categorias_ok_sim:
+            st.warning("⚠️ Nenhuma categoria é permitida nesse Tipo de Casulo + Estação (provavelmente é o caso de Jaquetas Pesadas em aramado).")
+        else:
+            faixa_sim = obter_faixa_capacidade(categoria_sim, tipo_sim, estacao_sim, rua_sim)
+            cap_min_sim = obter_capacidade_minima(categoria_sim, tipo_sim, estacao_sim, rua_sim)
+
+            desc_faixa = ""
+            if faixa_sim and faixa_sim[0] != faixa_sim[1]:
+                desc_faixa = f" (faixa da tabela: {faixa_sim[0]} a {faixa_sim[1]})"
+
+            st.info(f"📦 **{rua_sim}** | {TIPO_ESTRUTURAL_NOME_EXIBICAO.get(tipo_sim, tipo_sim)} | {categoria_sim} | {estacao_sim} → Capacidade real usada pelo sistema: **{cap_min_sim} peças**{desc_faixa}")
+
+            st.write("---")
+            st.markdown("<h4 style='text-align: center; color: #ffcc00;'>Teste rápido: e se eu colocar...</h4>", unsafe_allow_html=True)
+
+            def obter_cor_status(pct):
+                if pct >= 100: return "#e74c3c", "SATURADO"
+                elif pct >= 81: return "#f39c12", "ALERTA"
+                elif pct >= 50: return "#ffcc00", "MODERADO"
+                else: return "#45a29e", "LIVRE"
+
+            quantidades_teste = [5, 10, 20]
+            cols_teste = st.columns(len(quantidades_teste))
+            for idx_q, qtd_teste in enumerate(quantidades_teste):
+                pct_teste = (qtd_teste / cap_min_sim * 100) if cap_min_sim > 0 else 0
+                cor_teste, status_teste = obter_cor_status(pct_teste)
+                with cols_teste[idx_q]:
+                    st.markdown(f"""
+                    <div class="card-dashboard">
+                        <h5>{qtd_teste} peças</h5>
+                        <h2 style="color:{cor_teste};">{pct_teste:.0f}%</h2>
+                        <p style="color:#8892b0; font-size:11px; margin-top:4px;">{status_teste}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.write("")
+            st.markdown("<p style='text-align:center; color:#8892b0; font-size:13px;'>Ou teste um número específico:</p>", unsafe_allow_html=True)
+            col_custom1, col_custom2 = st.columns([1, 2])
+            with col_custom1:
+                qtd_custom_sim = st.number_input("Quantidade a testar", min_value=0, value=int(cap_min_sim), step=1, key="qtd_custom_sim")
+            pct_custom_sim = (qtd_custom_sim / cap_min_sim * 100) if cap_min_sim > 0 else 0
+            cor_custom, status_custom = obter_cor_status(pct_custom_sim)
+            with col_custom2:
+                st.markdown(f"""
+                <div class="card-dashboard" style="margin-top: 20px;">
+                    <h2 style="color:{cor_custom};">{pct_custom_sim:.1f}% — {status_custom}</h2>
+                </div>
+                """, unsafe_allow_html=True)
+                if qtd_custom_sim > cap_min_sim:
+                    st.error(f"⚠️ Excede a capacidade em {int(qtd_custom_sim - cap_min_sim)} peças!")
 
 
 # ==========================================
