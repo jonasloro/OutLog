@@ -2,3 +2,4 @@ streamlit
 pandas
 numpy
 pypdf
+supabase>=2.0.0
