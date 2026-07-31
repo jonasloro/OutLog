@@ -2,6 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+from datetime import datetime
+
+try:
+    import pypdf
+    PYPDF_DISPONIVEL = True
+except ImportError:
+    PYPDF_DISPONIVEL = False
 
 # 1. CONFIGURAÇÃO DE PÁGINA
 st.set_page_config(
@@ -333,6 +340,67 @@ def renderizar_cabecalho_colunas(lista_colunas):
         with grid_header[idx + 1]:
             st.markdown(f"<div style='text-align:center; font-weight:bold; color:#ffcc00; font-size:10px;'>{col_num:03d}</div>", unsafe_allow_html=True)
 
+def extrair_totais_por_grupo_pdf(arquivo_pdf):
+    """
+    Lê um PDF no formato 'Resumo de Estoque do Grupo' (agrupado por GRUPO,
+    detalhado por MARCA) e retorna uma lista de (nome_grupo, quantidade) com
+    o SUBTOTAL de peças de cada grupo — ignora os valores de custo/venda e
+    o detalhe por marca, que não são necessários pro planejamento de casulos.
+    """
+    leitor = pypdf.PdfReader(arquivo_pdf)
+    texto_completo = ""
+    for pagina in leitor.pages:
+        texto_completo += pagina.extract_text(extraction_mode="layout") + "\n"
+
+    padrao_dinheiro = re.compile(r'^\d{1,3}(\.\d{3})*,\d{2}$')
+    padrao_metadado = re.compile(r'(RESUMO DE ESTOQUE|Agrupado por|Empresas:|DESCRIÇÃO|Pag\.:|Detalhado por|Emitir P\.|^\d{2}\s*-\s*CD)', re.I)
+
+    def achar_qtd(lista_tokens):
+        for t in lista_tokens:
+            if padrao_dinheiro.match(t):
+                continue
+            if re.match(r'^\d+(\.\d{3})*$', t):
+                return int(t.replace(".", ""))
+        return None
+
+    grupos = []
+    grupo_atual = None
+
+    for linha_bruta in texto_completo.split("\n"):
+        linha = linha_bruta.strip()
+        if not linha:
+            continue
+        if padrao_metadado.search(linha):
+            continue
+
+        tokens = linha.split()
+        if not tokens:
+            continue
+        primeiro_upper = tokens[0].upper()
+        n_valores_dinheiro = sum(1 for t in tokens if padrao_dinheiro.match(t))
+
+        if primeiro_upper == "VAZIO":
+            qtd = achar_qtd(tokens[1:])
+            if qtd is not None:
+                grupos.append(("Vazio (sem grupo)", qtd))
+            continue
+
+        if primeiro_upper == "SUBTOTAL":
+            qtd = achar_qtd(tokens[1:])
+            if qtd is not None and grupo_atual:
+                grupos.append((grupo_atual, qtd))
+            continue
+
+        if primeiro_upper == "TOTAL":
+            continue
+
+        if n_valores_dinheiro >= 2:
+            continue  # linha de marca (dado), não é cabeçalho de grupo
+
+        grupo_atual = linha
+
+    return grupos
+
 # Inicialização do Estado
 if 'base_dados_cd' not in st.session_state:
     st.session_state.base_dados_cd = {}
@@ -367,6 +435,11 @@ if 'usuario_atual' not in st.session_state:
     st.session_state.usuario_atual = None
 if 'papel_atual' not in st.session_state:
     st.session_state.papel_atual = None
+
+if 'relatorio_estoque_grupos' not in st.session_state:
+    st.session_state.relatorio_estoque_grupos = None  # lista de (grupo, qtd)
+if 'relatorio_estoque_meta' not in st.session_state:
+    st.session_state.relatorio_estoque_meta = None  # {"nome_arquivo":..., "importado_em":...}
 
 
 # ==========================================
@@ -561,6 +634,7 @@ opcoes_telas = [
     "🔍 Consulta Rápida de Casulos", 
     "📊 Estatísticas de Casulos",
     "🧪 Simulador de Capacidade",
+    "📄 Importar Relatório de Estoque",
     "📥 Entrada de Dados / Abastecimento"
 ]
 if st.session_state.papel_atual == "gerente":
@@ -1208,6 +1282,84 @@ elif st.session_state.aba_ativa_selecionada == "🧪 Simulador de Capacidade":
                 """, unsafe_allow_html=True)
                 if qtd_custom_sim > cap_min_sim:
                     st.error(f"⚠️ Excede a capacidade em {int(qtd_custom_sim - cap_min_sim)} peças!")
+
+
+# ==========================================
+# TELA 3.7: IMPORTAR RELATÓRIO DE ESTOQUE
+# ==========================================
+elif st.session_state.aba_ativa_selecionada == "📄 Importar Relatório de Estoque":
+    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📄 Importar Relatório de Estoque (por Grupo)</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #8892b0;'>Suba o PDF 'Resumo de Estoque do Grupo' pra atualizar o retrato do estoque real — o sistema lê o total de peças de cada grupo (ignora marca, custo e venda).</p>", unsafe_allow_html=True)
+
+    if not PYPDF_DISPONIVEL:
+        st.error("⚠️ A biblioteca 'pypdf' não está instalada neste ambiente. Adicione `pypdf` ao arquivo requirements.txt do repositório e reimplante o app no Streamlit Cloud.")
+    else:
+        if st.session_state.papel_atual != "gerente":
+            st.info("🔒 Importar um novo relatório é uma ação crítica (substitui os dados atuais), restrita ao papel de Gerente. Você ainda pode ver o último relatório importado abaixo.")
+        else:
+            arquivo_relatorio = st.file_uploader("Selecione o PDF do relatório", type=["pdf"], key="upload_relatorio")
+
+            if arquivo_relatorio is not None:
+                if st.button("📥 Processar e Atualizar", type="primary"):
+                    processado_com_sucesso = False
+                    try:
+                        grupos_extraidos = extrair_totais_por_grupo_pdf(arquivo_relatorio)
+                        if not grupos_extraidos:
+                            st.error("⚠️ Não consegui reconhecer nenhum grupo nesse PDF. Confirme que é o relatório 'Resumo de Estoque do Grupo'.")
+                        else:
+                            st.session_state.relatorio_estoque_grupos = grupos_extraidos
+                            st.session_state.relatorio_estoque_meta = {
+                                "nome_arquivo": arquivo_relatorio.name,
+                                "importado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "importado_por": st.session_state.usuario_atual,
+                            }
+                            processado_com_sucesso = True
+                    except Exception as e:
+                        st.error(f"⚠️ Não consegui ler esse PDF ({e}). Confirme que é o mesmo formato do relatório 'Resumo de Estoque do Grupo'.")
+
+                    if processado_com_sucesso:
+                        st.success(f"Relatório processado! {len(grupos_extraidos)} grupos reconhecidos.")
+                        st.rerun()
+
+    st.write("---")
+
+    if not st.session_state.relatorio_estoque_grupos:
+        st.info("Nenhum relatório importado ainda.")
+    else:
+        meta = st.session_state.relatorio_estoque_meta or {}
+        st.caption(f"Último relatório: **{meta.get('nome_arquivo', '?')}** — importado em {meta.get('importado_em', '?')} por {meta.get('importado_por', '?')}")
+
+        grupos_atuais = st.session_state.relatorio_estoque_grupos
+        fem_rel = sorted([(n, q) for n, q in grupos_atuais if n.upper().endswith("FEMIN")], key=lambda x: -x[1])
+        masc_rel = sorted([(n, q) for n, q in grupos_atuais if n.upper().endswith("MASC")], key=lambda x: -x[1])
+        nomes_fem_masc = {x[0] for x in fem_rel} | {x[0] for x in masc_rel}
+        outros_rel = [(n, q) for n, q in grupos_atuais if n not in nomes_fem_masc]
+
+        total_fem_rel = sum(q for _, q in fem_rel)
+        total_masc_rel = sum(q for _, q in masc_rel)
+        total_outros_rel = sum(q for _, q in outros_rel)
+        total_geral_rel = total_fem_rel + total_masc_rel + total_outros_rel
+
+        kcol_r1, kcol_r2, kcol_r3 = st.columns(3)
+        with kcol_r1:
+            st.markdown(f"<div class='card-dashboard'><h5>👩 Feminino</h5><h2>{total_fem_rel:,}</h2></div>", unsafe_allow_html=True)
+        with kcol_r2:
+            st.markdown(f"<div class='card-dashboard'><h5>👨 Masculino</h5><h2>{total_masc_rel:,}</h2></div>", unsafe_allow_html=True)
+        with kcol_r3:
+            st.markdown(f"<div class='card-dashboard'><h5>📦 Total (com sacola/suprimento etc.)</h5><h2>{total_geral_rel:,}</h2></div>", unsafe_allow_html=True)
+
+        col_rel1, col_rel2 = st.columns(2)
+        with col_rel1:
+            st.markdown("<h5 style='color:#ffcc00;'>Feminino por Grupo</h5>", unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(fem_rel, columns=["Grupo", "Peças"]), use_container_width=True, hide_index=True)
+        with col_rel2:
+            st.markdown("<h5 style='color:#ffcc00;'>Masculino por Grupo</h5>", unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(masc_rel, columns=["Grupo", "Peças"]), use_container_width=True, hide_index=True)
+
+        with st.expander("Ver grupos sem gênero (Sacola, Suprimento, Transferência etc.)"):
+            st.dataframe(pd.DataFrame(outros_rel, columns=["Grupo", "Peças"]), use_container_width=True, hide_index=True)
+
+        st.caption("Esses grupos vêm do seu ERP e usam uma nomenclatura própria (ex: 'BLUSA FEMIN'), diferente das categorias do motor de capacidade (ex: 'Camisetas/Camisas M.Curta Finas'). Por enquanto essa tela só mostra o retrato real do estoque — cruzar automaticamente com a capacidade dos casulos é um próximo passo.")
 
 
 # ==========================================
