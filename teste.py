@@ -613,18 +613,25 @@ if not st.session_state.autenticado:
 
         if submit_login:
             dados_usuario = st.session_state.usuarios_cadastrados.get(usuario_input)
-            if dados_usuario and dados_usuario["senha"] == senha_input:
-                st.session_state.autenticado = True
-                st.session_state.usuario_atual = usuario_input
-                st.session_state.papel_atual = dados_usuario["papel"]
-                st.rerun()
-            else:
-                st.error("⚠️ Usuário ou senha inválidos.")
-
-        st.markdown("<p style='text-align:center; color:#8892b0; font-size:11px; margin-top:10px;'>Acesso padrão inicial: <b>admin</b> / <b>admin123</b><br>(crie os logins da equipe e troque essa senha na aba Gerenciador)</p>", unsafe_allow_html=True)
-
-    st.stop()
-
+           # CÓDIGO NOVO (Consultando o Supabase):
+if submit_login:
+    # 1. Busca o usuário no banco de dados
+    resposta = banco_de_dados.table("usuarios").select("*").eq("username", usuario_input).execute()
+    
+    # 2. Verifica se encontrou alguém
+    if len(resposta.data) > 0:
+        dados_usuario = resposta.data[0] # Pega os dados do usuário encontrado
+        
+        # 3. Confere se a senha bate
+        if dados_usuario["senha"] == senha_input:
+            st.session_state.autenticado = True
+            st.session_state.usuario_atual = dados_usuario["username"]
+            st.session_state.papel_atual = dados_usuario["papel"]
+            st.rerun()
+        else:
+            st.error("⚠️ Senha incorreta.")
+    else:
+        st.error("⚠️ Usuário não encontrado.")
 # SIDEBAR: NAVEGAÇÃO
 st.sidebar.markdown("<h2 style='color: #ffcc00; text-align: center;'>⚙️ NAVEGAÇÃO</h2>", unsafe_allow_html=True)
 
