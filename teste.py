@@ -10,6 +10,13 @@ url = st.secrets["SUPABASE_URL"]
 chave = st.secrets["SUPABASE_KEY"]
 banco_de_dados = create_client(url, chave)
 
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "usuario_atual" not in st.session_state:
+    st.session_state.usuario_atual = ""
+if "papel_atual" not in st.session_state:
+    st.session_state.papel_atual = ""
+
 try:
     import pypdf
     PYPDF_DISPONIVEL = True
@@ -658,7 +665,12 @@ if st.session_state.aba_ativa_selecionada not in opcoes_telas:
 
 st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
 
-st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
+# SUBSTIUIR A LINHA 661 POR ESTE BLOCO:
+if st.session_state.autenticado:
+    st.sidebar.markdown(
+        f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual})</p>",
+        unsafe_allow_html=True
+    )
 if st.sidebar.button("🚪 Sair"):
     st.session_state.autenticado = False
     st.session_state.usuario_atual = None
