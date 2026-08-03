@@ -3,6 +3,12 @@ import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
+from supabase import create_client
+
+# Conexão com o Supabase
+url = st.secrets["SUPABASE_URL"]
+chave = st.secrets["SUPABASE_KEY"]
+banco_de_dados = create_client(url, chave)
 
 try:
     import pypdf
