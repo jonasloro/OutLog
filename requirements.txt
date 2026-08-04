@@ -3,3 +3,4 @@ pandas
 numpy
 pypdf
 supabase
+psycopg2-binary
