@@ -3,25 +3,26 @@ import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
-from supabase import create_client
-
-# Conexão com o Supabase
-url = st.secrets["SUPABASE_URL"]
-chave = st.secrets["SUPABASE_KEY"]
-banco_de_dados = create_client(url, chave)
-
-if "autenticado" not in st.session_state:
-    st.session_state.autenticado = False
-if "usuario_atual" not in st.session_state:
-    st.session_state.usuario_atual = ""
-if "papel_atual" not in st.session_state:
-    st.session_state.papel_atual = ""
 
 try:
     import pypdf
     PYPDF_DISPONIVEL = True
 except ImportError:
     PYPDF_DISPONIVEL = False
+
+try:
+    import psycopg2
+    PSYCOPG2_DISPONIVEL = True
+except ImportError:
+    PSYCOPG2_DISPONIVEL = False
+
+try:
+    import sqlalchemy
+    from sqlalchemy import text
+    import bcrypt
+    DB_LIBS_DISPONIVEIS = True
+except ImportError:
+    DB_LIBS_DISPONIVEIS = False
 
 # 1. CONFIGURAÇÃO DE PÁGINA
 st.set_page_config(
@@ -353,6 +354,125 @@ def renderizar_cabecalho_colunas(lista_colunas):
         with grid_header[idx + 1]:
             st.markdown(f"<div style='text-align:center; font-weight:bold; color:#ffcc00; font-size:10px;'>{col_num:03d}</div>", unsafe_allow_html=True)
 
+# ==========================================
+# PERSISTÊNCIA EM BANCO DE DADOS (POSTGRES/SUPABASE)
+# ==========================================
+# Se o banco não estiver configurado (sem st.secrets["postgres"]) ou a conexão
+# falhar, o app cai de volta pro comportamento em memória (session_state) sem
+# quebrar — só avisa que a mudança não foi salva de forma permanente.
+
+def obter_conexao_bd():
+    if not PSYCOPG2_DISPONIVEL:
+        return None
+    try:
+        cfg = st.secrets["postgres"]
+        return psycopg2.connect(
+            host=cfg["host"], port=cfg["port"], dbname=cfg["dbname"],
+            user=cfg["user"], password=cfg["password"], sslmode="require",
+            connect_timeout=5,
+        )
+    except Exception:
+        return None
+
+def carregar_estoque_do_banco():
+    """Carrega o estoque salvo no banco pro formato do base_dados_cd
+    ({chave_casulo: {"categoria|estacao": qtd}}). Retorna None se o banco não
+    estiver disponível (nesse caso o app usa só memória, como antes)."""
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT chave_casulo, categoria_peca, estacao, quantidade FROM estoque_casulo WHERE quantidade > 0")
+            linhas = cur.fetchall()
+        conn.close()
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return None
+
+    dados = {}
+    for chave, categoria, estacao, qtd in linhas:
+        combo = obter_chave_estoque(categoria, estacao)
+        dados.setdefault(chave, {})[combo] = int(qtd)
+    return dados
+
+def salvar_no_banco(chave_casulo, categoria_peca, estacao, quantidade):
+    """Grava (ou remove, se quantidade<=0) uma combinação categoria/estação
+    de um casulo específico no banco."""
+    conn = obter_conexao_bd()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            if quantidade <= 0:
+                cur.execute(
+                    "DELETE FROM estoque_casulo WHERE chave_casulo=%s AND categoria_peca=%s AND estacao=%s",
+                    (chave_casulo, categoria_peca, estacao)
+                )
+            else:
+                cur.execute("""
+                    INSERT INTO estoque_casulo (chave_casulo, categoria_peca, estacao, quantidade, atualizado_em)
+                    VALUES (%s, %s, %s, %s, now())
+                    ON CONFLICT (chave_casulo, categoria_peca, estacao)
+                    DO UPDATE SET quantidade = EXCLUDED.quantidade, atualizado_em = now()
+                """, (chave_casulo, categoria_peca, estacao, quantidade))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.warning(f"⚠️ Não consegui salvar no banco (a mudança ficou só nesta sessão): {e}")
+        return False
+
+def zerar_tudo_no_banco():
+    conn = obter_conexao_bd()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM estoque_casulo")
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.warning(f"⚠️ Não consegui zerar no banco: {e}")
+        return False
+
+def salvar_lote_no_banco(lista_tuplas):
+    """lista_tuplas: [(chave_casulo, categoria, estacao, quantidade), ...],
+    já filtrada só com quantidade > 0. Substitui TODO o estoque no banco."""
+    conn = obter_conexao_bd()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM estoque_casulo")
+            if lista_tuplas:
+                cur.executemany(
+                    "INSERT INTO estoque_casulo (chave_casulo, categoria_peca, estacao, quantidade, atualizado_em) VALUES (%s, %s, %s, %s, now())",
+                    lista_tuplas
+                )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.warning(f"⚠️ Não consegui salvar o lote no banco: {e}")
+        return False
+
 def extrair_totais_por_grupo_pdf(arquivo_pdf):
     """
     Lê um PDF no formato 'Resumo de Estoque do Grupo' (agrupado por GRUPO,
@@ -416,6 +536,7 @@ def extrair_totais_por_grupo_pdf(arquivo_pdf):
 
 # Inicialização do Estado
 if 'base_dados_cd' not in st.session_state:
+    estoque_persistido = carregar_estoque_do_banco()
     st.session_state.base_dados_cd = {}
     for r_nome, r_cfg in ESTRUTURA_CD.items():
         if r_cfg.get("tipo") == "Inexistente":
@@ -430,7 +551,13 @@ if 'base_dados_cd' not in st.session_state:
                 spec = obter_especificacao_casulo(r_nome, c, l_param)
                 for n in spec["niveis"]:
                     chave_casulo = obter_chave_casulo(r_nome, lado, c, n)
-                    st.session_state.base_dados_cd[chave_casulo] = {}
+                    if estoque_persistido and chave_casulo in estoque_persistido:
+                        st.session_state.base_dados_cd[chave_casulo] = estoque_persistido[chave_casulo]
+                    else:
+                        st.session_state.base_dados_cd[chave_casulo] = {}
+
+if 'banco_dados_conectado' not in st.session_state:
+    st.session_state.banco_dados_conectado = obter_conexao_bd() is not None
 
 if 'busca_destaque' not in st.session_state:
     st.session_state.busca_destaque = None
@@ -626,25 +753,18 @@ if not st.session_state.autenticado:
 
         if submit_login:
             dados_usuario = st.session_state.usuarios_cadastrados.get(usuario_input)
-           # CÓDIGO NOVO (Consultando o Supabase):
-if submit_login:
-    # 1. Busca o usuário no banco de dados
-    resposta = banco_de_dados.table("usuarios").select("*").eq("username", usuario_input).execute()
-    
-    # 2. Verifica se encontrou alguém
-    if len(resposta.data) > 0:
-        dados_usuario = resposta.data[0] # Pega os dados do usuário encontrado
-        
-        # 3. Confere se a senha bate
-        if dados_usuario["senha"] == senha_input:
-            st.session_state.autenticado = True
-            st.session_state.usuario_atual = dados_usuario["username"]
-            st.session_state.papel_atual = dados_usuario["papel"]
-            st.rerun()
-        else:
-            st.error("⚠️ Senha incorreta.")
-    else:
-        st.error("⚠️ Usuário não encontrado.")
+            if dados_usuario and dados_usuario["senha"] == senha_input:
+                st.session_state.autenticado = True
+                st.session_state.usuario_atual = usuario_input
+                st.session_state.papel_atual = dados_usuario["papel"]
+                st.rerun()
+            else:
+                st.error("⚠️ Usuário ou senha inválidos.")
+
+        st.markdown("<p style='text-align:center; color:#8892b0; font-size:11px; margin-top:10px;'>Acesso padrão inicial: <b>admin</b> / <b>admin123</b><br>(crie os logins da equipe e troque essa senha na aba Gerenciador)</p>", unsafe_allow_html=True)
+
+    st.stop()
+
 # SIDEBAR: NAVEGAÇÃO
 st.sidebar.markdown("<h2 style='color: #ffcc00; text-align: center;'>⚙️ NAVEGAÇÃO</h2>", unsafe_allow_html=True)
 
@@ -665,12 +785,11 @@ if st.session_state.aba_ativa_selecionada not in opcoes_telas:
 
 st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
 
-# SUBSTIUIR A LINHA 661 POR ESTE BLOCO:
-if st.session_state.autenticado:
-    st.sidebar.markdown(
-        f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual})</p>",
-        unsafe_allow_html=True
-    )
+st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
+if st.session_state.banco_dados_conectado:
+    st.sidebar.markdown("<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>", unsafe_allow_html=True)
+else:
+    st.sidebar.markdown("<p style='text-align:center; color:#f39c12; font-size:11px;'>🟡 Sem banco configurado — estoque só nesta sessão</p>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Sair"):
     st.session_state.autenticado = False
     st.session_state.usuario_atual = None
@@ -1504,6 +1623,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 else:
                     dados_atualizados[chave_combo_cad] = int(nova_qtd_input)
                 st.session_state.base_dados_cd[chave_alvo] = dados_atualizados
+                salvar_no_banco(chave_alvo, categoria_cad, estacao_cad, int(nova_qtd_input))
                 st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {categoria_cad} / {estacao_cad} = {nova_qtd_input} peças!")
                 st.rerun()
 
@@ -1520,6 +1640,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 if st.button("Zerar Todos os Casulos (0 Peças)"):
                     for k in st.session_state.base_dados_cd.keys():
                         st.session_state.base_dados_cd[k] = {}
+                    zerar_tudo_no_banco()
                     st.success("Todos os casulos foram zerados com sucesso!")
                     st.rerun()
             with c_B:
@@ -1548,6 +1669,13 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                             st.session_state.base_dados_cd[k] = {obter_chave_estoque(categoria_sorteada, estacao_sorteada): qtd_sorteada}
                         else:
                             st.session_state.base_dados_cd[k] = {}
+
+                    lote_para_banco = [
+                        (chave, combo.split("|", 1)[0], combo.split("|", 1)[1], qtd)
+                        for chave, dados_casulo in st.session_state.base_dados_cd.items()
+                        for combo, qtd in dados_casulo.items() if qtd > 0
+                    ]
+                    salvar_lote_no_banco(lote_para_banco)
                     st.success("Base populada com dados de teste (categorias e estações variadas)!")
                     st.rerun()
 
