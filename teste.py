@@ -377,7 +377,7 @@ def obter_conexao_bd():
 def carregar_estoque_do_banco():
     """Carrega o estoque salvo no banco pro formato do base_dados_cd
     ({chave_casulo: {"categoria|estacao": qtd}}). Retorna None se o banco não
-    estiver disponível (nesse caso o app usa só memória, como antes)."""
+    estiver disponível ou der erro (nesse caso o app usa só memória, como antes)."""
     conn = obter_conexao_bd()
     if conn is None:
         return None
@@ -386,11 +386,12 @@ def carregar_estoque_do_banco():
             cur.execute("SELECT chave_casulo, categoria_peca, estacao, quantidade FROM estoque_casulo WHERE quantidade > 0")
             linhas = cur.fetchall()
         conn.close()
-    except Exception:
+    except Exception as e:
         try:
             conn.close()
         except Exception:
             pass
+        st.session_state.ultimo_erro_bd = str(e)
         return None
 
     dados = {}
@@ -401,10 +402,11 @@ def carregar_estoque_do_banco():
 
 def salvar_no_banco(chave_casulo, categoria_peca, estacao, quantidade):
     """Grava (ou remove, se quantidade<=0) uma combinação categoria/estação
-    de um casulo específico no banco."""
+    de um casulo específico no banco.
+    Retorna: True (salvou), False (banco configurado mas falhou), None (banco não configurado)."""
     conn = obter_conexao_bd()
     if conn is None:
-        return False
+        return None
     try:
         with conn.cursor() as cur:
             if quantidade <= 0:
@@ -427,13 +429,13 @@ def salvar_no_banco(chave_casulo, categoria_peca, estacao, quantidade):
             conn.close()
         except Exception:
             pass
-        st.warning(f"⚠️ Não consegui salvar no banco (a mudança ficou só nesta sessão): {e}")
+        st.session_state.ultimo_erro_bd = str(e)
         return False
 
 def zerar_tudo_no_banco():
     conn = obter_conexao_bd()
     if conn is None:
-        return False
+        return None
     try:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM estoque_casulo")
@@ -445,15 +447,16 @@ def zerar_tudo_no_banco():
             conn.close()
         except Exception:
             pass
-        st.warning(f"⚠️ Não consegui zerar no banco: {e}")
+        st.session_state.ultimo_erro_bd = str(e)
         return False
 
 def salvar_lote_no_banco(lista_tuplas):
     """lista_tuplas: [(chave_casulo, categoria, estacao, quantidade), ...],
-    já filtrada só com quantidade > 0. Substitui TODO o estoque no banco."""
+    já filtrada só com quantidade > 0. Substitui TODO o estoque no banco.
+    Retorna: True (salvou), False (banco configurado mas falhou), None (banco não configurado)."""
     conn = obter_conexao_bd()
     if conn is None:
-        return False
+        return None
     try:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM estoque_casulo")
@@ -470,7 +473,7 @@ def salvar_lote_no_banco(lista_tuplas):
             conn.close()
         except Exception:
             pass
-        st.warning(f"⚠️ Não consegui salvar o lote no banco: {e}")
+        st.session_state.ultimo_erro_bd = str(e)
         return False
 
 def extrair_totais_por_grupo_pdf(arquivo_pdf):
@@ -558,6 +561,8 @@ if 'base_dados_cd' not in st.session_state:
 
 if 'banco_dados_conectado' not in st.session_state:
     st.session_state.banco_dados_conectado = obter_conexao_bd() is not None
+if 'ultimo_erro_bd' not in st.session_state:
+    st.session_state.ultimo_erro_bd = None
 
 if 'busca_destaque' not in st.session_state:
     st.session_state.busca_destaque = None
@@ -788,6 +793,8 @@ st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", o
 st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
 if st.session_state.banco_dados_conectado:
     st.sidebar.markdown("<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>", unsafe_allow_html=True)
+    if st.session_state.ultimo_erro_bd:
+        st.sidebar.markdown(f"<p style='text-align:center; color:#e74c3c; font-size:10px;'>⚠️ Última falha ao ler/gravar: {st.session_state.ultimo_erro_bd}</p>", unsafe_allow_html=True)
 else:
     st.sidebar.markdown("<p style='text-align:center; color:#f39c12; font-size:11px;'>🟡 Sem banco configurado — estoque só nesta sessão</p>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Sair"):
@@ -1623,9 +1630,12 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 else:
                     dados_atualizados[chave_combo_cad] = int(nova_qtd_input)
                 st.session_state.base_dados_cd[chave_alvo] = dados_atualizados
-                salvar_no_banco(chave_alvo, categoria_cad, estacao_cad, int(nova_qtd_input))
-                st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {categoria_cad} / {estacao_cad} = {nova_qtd_input} peças!")
-                st.rerun()
+                resultado_bd = salvar_no_banco(chave_alvo, categoria_cad, estacao_cad, int(nova_qtd_input))
+                if resultado_bd is False:
+                    st.error(f"⚠️ O banco está conectado, mas a gravação FALHOU — a mudança ficou só nesta sessão (some se a página recarregar). Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                else:
+                    st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {categoria_cad} / {estacao_cad} = {nova_qtd_input} peças!")
+                    st.rerun()
 
     with tab_cad2:
         st.markdown("#### Manutenção Geral da Base de Dados")
@@ -1640,9 +1650,12 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 if st.button("Zerar Todos os Casulos (0 Peças)"):
                     for k in st.session_state.base_dados_cd.keys():
                         st.session_state.base_dados_cd[k] = {}
-                    zerar_tudo_no_banco()
-                    st.success("Todos os casulos foram zerados com sucesso!")
-                    st.rerun()
+                    resultado_bd = zerar_tudo_no_banco()
+                    if resultado_bd is False:
+                        st.error(f"⚠️ O banco está conectado, mas zerar FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                    else:
+                        st.success("Todos os casulos foram zerados com sucesso!")
+                        st.rerun()
             with c_B:
                 if st.button("Popular com Dados Simulados Aleatórios"):
                     np.random.seed(321)
@@ -1675,9 +1688,12 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                         for chave, dados_casulo in st.session_state.base_dados_cd.items()
                         for combo, qtd in dados_casulo.items() if qtd > 0
                     ]
-                    salvar_lote_no_banco(lote_para_banco)
-                    st.success("Base populada com dados de teste (categorias e estações variadas)!")
-                    st.rerun()
+                    resultado_bd = salvar_lote_no_banco(lote_para_banco)
+                    if resultado_bd is False:
+                        st.error(f"⚠️ O banco está conectado, mas salvar o lote FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                    else:
+                        st.success("Base populada com dados de teste (categorias e estações variadas)!")
+                        st.rerun()
 
 
 # ==========================================
