@@ -800,6 +800,7 @@ if st.session_state.aba_ativa_selecionada not in opcoes_telas:
 st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
 
 st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
+st.session_state.banco_dados_conectado = (obter_conexao_bd() is not None)
 if st.session_state.banco_dados_conectado:
     st.sidebar.markdown("<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>", unsafe_allow_html=True)
     if st.session_state.ultimo_erro_bd:
