@@ -363,15 +363,24 @@ def renderizar_cabecalho_colunas(lista_colunas):
 
 def obter_conexao_bd():
     if not PSYCOPG2_DISPONIVEL:
+        st.session_state.ultimo_erro_bd = "psycopg2 não está instalado"
         return None
+
     try:
         cfg = st.secrets["postgres"]
-        return psycopg2.connect(
-            host=cfg["host"], port=cfg["port"], dbname=cfg["dbname"],
-            user=cfg["user"], password=cfg["password"], sslmode="require",
+        conn = psycopg2.connect(
+            host=cfg["host"],
+            port=cfg["port"],
+            dbname=cfg["dbname"],
+            user=cfg["user"],
+            password=cfg["password"],
+            sslmode="require",
             connect_timeout=5,
         )
-    except Exception:
+        st.session_state.ultimo_erro_bd = None
+        return conn
+    except Exception as e:
+        st.session_state.ultimo_erro_bd = str(e)
         return None
 
 def carregar_estoque_do_banco():
