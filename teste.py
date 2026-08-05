@@ -569,8 +569,7 @@ if 'base_dados_cd' not in st.session_state:
                     else:
                         st.session_state.base_dados_cd[chave_casulo] = {}
 
-if 'banco_dados_conectado' not in st.session_state:
-    st.session_state.banco_dados_conectado = obter_conexao_bd() is not None
+st.session_state.banco_dados_conectado = obter_conexao_bd() is not None
 if 'ultimo_erro_bd' not in st.session_state:
     st.session_state.ultimo_erro_bd = None
 
