@@ -800,12 +800,42 @@ if st.session_state.aba_ativa_selecionada not in opcoes_telas:
 
 st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
 
-st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
-st.session_state.banco_dados_conectado = (obter_conexao_bd() is not None)
+st.sidebar.markdown(
+    f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>",
+    unsafe_allow_html=True
+)
+
+# Inicializa o erro (para não depender de ordem de execução)
+if 'ultimo_erro_bd' not in st.session_state:
+    st.session_state.ultimo_erro_bd = None
+
+# Testa conexão uma vez e fecha (evita “sobrar conexão aberta”)
+conn_teste = obter_conexao_bd()
+if conn_teste is not None:
+    try:
+        conn_teste.close()
+    except Exception:
+        pass
+
+st.session_state.banco_dados_conectado = conn_teste is not None
+
 if st.session_state.banco_dados_conectado:
-    st.sidebar.markdown("<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>", unsafe_allow_html=True)
-    if st.session_state.ultimo_erro_bd:
-        st.sidebar.markdown(f"<p style='text-align:center; color:#e74c3c; font-size:10px;'>⚠️ Última falha ao ler/gravar: {st.session_state.ultimo_erro_bd}</p>", unsafe_allow_html=True)
+    st.sidebar.markdown(
+        "<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>",
+        unsafe_allow_html=True
+    )
+else:
+    st.sidebar.markdown(
+        "<p style='text-align:center; color:#f39c12; font-size:11px;'>🟡 Sem banco configurado — estoque só nesta sessão</p>",
+        unsafe_allow_html=True
+    )
+
+# Mostra a última falha SEMPRE que existir (inclusive quando não conecta)
+if st.session_state.ultimo_erro_bd:
+    st.sidebar.markdown(
+        f"<p style='text-align:center; color:#e74c3c; font-size:10px;'>⚠️ Última falha ao ler/gravar: {st.session_state.ultimo_erro_bd}</p>",
+        unsafe_allow_html=True
+    )
 else:
     st.sidebar.markdown("<p style='text-align:center; color:#f39c12; font-size:11px;'>🟡 Sem banco configurado — estoque só nesta sessão</p>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Sair"):
