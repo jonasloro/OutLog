@@ -367,7 +367,7 @@ def obter_conexao_bd():
             st.session_state.ultimo_erro_bd = "psycopg2 não está instalado"
             return None
 
-        cfg = st.secrets["postgres"]  # se faltar, vai cair no except e mostrar
+        cfg = st.secrets["postgres"]  # pode dar KeyError se não existir
         st.session_state.ultimo_erro_bd = None
 
         conn = psycopg2.connect(
@@ -384,6 +384,7 @@ def obter_conexao_bd():
     except Exception as e:
         st.session_state.ultimo_erro_bd = str(e)
         return None
+
 def carregar_estoque_do_banco():
     """Carrega o estoque salvo no banco pro formato do base_dados_cd
     ({chave_casulo: {"categoria|estacao": qtd}}). Retorna None se o banco não
