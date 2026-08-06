@@ -461,6 +461,8 @@ def zerar_tudo_no_banco():
 def salvar_lote_no_banco(lista_tuplas):
     """lista_tuplas: [(chave_casulo, categoria, estacao, quantidade), ...],
     já filtrada só com quantidade > 0. Substitui TODO o estoque no banco.
+    Grava em blocos de 500 linhas por vez (bem mais rápido que uma linha por
+    vez, que era o gargalo mais provável em bases com milhares de casulos).
     Retorna: True (salvou), False (banco configurado mas falhou), None (banco não configurado)."""
     conn = obter_conexao_bd()
     if conn is None:
@@ -468,10 +470,14 @@ def salvar_lote_no_banco(lista_tuplas):
     try:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM estoque_casulo")
-            if lista_tuplas:
-                cur.executemany(
-                    "INSERT INTO estoque_casulo (chave_casulo, categoria_peca, estacao, quantidade, atualizado_em) VALUES (%s, %s, %s, %s, now())",
-                    lista_tuplas
+            tamanho_bloco = 500
+            for i in range(0, len(lista_tuplas), tamanho_bloco):
+                bloco = lista_tuplas[i:i + tamanho_bloco]
+                marcadores = ", ".join(["(%s, %s, %s, %s, now())"] * len(bloco))
+                valores_achatados = [valor for tupla in bloco for valor in tupla]
+                cur.execute(
+                    f"INSERT INTO estoque_casulo (chave_casulo, categoria_peca, estacao, quantidade, atualizado_em) VALUES {marcadores}",
+                    valores_achatados
                 )
         conn.commit()
         conn.close()
@@ -1641,7 +1647,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                     dados_atualizados[chave_combo_cad] = int(nova_qtd_input)
                 st.session_state.base_dados_cd[chave_alvo] = dados_atualizados
                 resultado_bd = salvar_no_banco(chave_alvo, categoria_cad, estacao_cad, int(nova_qtd_input))
-                if resultado_bd is False:
+                if resultado_bd is not True and st.session_state.banco_dados_conectado:
                     st.error(f"⚠️ O banco está conectado, mas a gravação FALHOU — a mudança ficou só nesta sessão (some se a página recarregar). Erro técnico: `{st.session_state.ultimo_erro_bd}`")
                 else:
                     st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {categoria_cad} / {estacao_cad} = {nova_qtd_input} peças!")
@@ -1661,7 +1667,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                     for k in st.session_state.base_dados_cd.keys():
                         st.session_state.base_dados_cd[k] = {}
                     resultado_bd = zerar_tudo_no_banco()
-                    if resultado_bd is False:
+                    if resultado_bd is not True and st.session_state.banco_dados_conectado:
                         st.error(f"⚠️ O banco está conectado, mas zerar FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
                     else:
                         st.success("Todos os casulos foram zerados com sucesso!")
@@ -1699,7 +1705,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                         for combo, qtd in dados_casulo.items() if qtd > 0
                     ]
                     resultado_bd = salvar_lote_no_banco(lote_para_banco)
-                    if resultado_bd is False:
+                    if resultado_bd is not True and st.session_state.banco_dados_conectado:
                         st.error(f"⚠️ O banco está conectado, mas salvar o lote FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
                     else:
                         st.success("Base populada com dados de teste (categorias e estações variadas)!")
