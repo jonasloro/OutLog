@@ -362,27 +362,24 @@ def renderizar_cabecalho_colunas(lista_colunas):
 # quebrar — só avisa que a mudança não foi salva de forma permanente.
 
 def obter_conexao_bd():
+    if not PSYCOPG2_DISPONIVEL:
+        st.session_state.ultimo_erro_bd = "biblioteca 'psycopg2-binary' não instalada — falta adicionar no requirements.txt do repositório"
+        return None
     try:
-        if not PSYCOPG2_DISPONIVEL:
-            st.session_state.ultimo_erro_bd = "psycopg2 não está instalado"
-            return None
-
-        cfg = st.secrets["postgres"]  # pode dar KeyError se não existir
-        st.session_state.ultimo_erro_bd = None
-
+        cfg = st.secrets["postgres"]
+    except Exception:
+        st.session_state.ultimo_erro_bd = "sem seção [postgres] configurada em Settings → Secrets no Streamlit Cloud"
+        return None
+    try:
         conn = psycopg2.connect(
-            host=cfg["host"],
-            port=cfg["port"],
-            dbname=cfg["dbname"],
-            user=cfg["user"],
-            password=cfg["password"],
-            sslmode="require",
+            host=cfg["host"], port=cfg["port"], dbname=cfg["dbname"],
+            user=cfg["user"], password=cfg["password"], sslmode="require",
             connect_timeout=5,
         )
+        st.session_state.ultimo_erro_bd = None
         return conn
-
     except Exception as e:
-        st.session_state.ultimo_erro_bd = str(e)
+        st.session_state.ultimo_erro_bd = f"falha ao conectar no Postgres: {e}"
         return None
 
 def carregar_estoque_do_banco():
@@ -570,7 +567,8 @@ if 'base_dados_cd' not in st.session_state:
                     else:
                         st.session_state.base_dados_cd[chave_casulo] = {}
 
-st.session_state.banco_dados_conectado = obter_conexao_bd() is not None
+if 'banco_dados_conectado' not in st.session_state:
+    st.session_state.banco_dados_conectado = obter_conexao_bd() is not None
 if 'ultimo_erro_bd' not in st.session_state:
     st.session_state.ultimo_erro_bd = None
 
@@ -800,44 +798,15 @@ if st.session_state.aba_ativa_selecionada not in opcoes_telas:
 
 st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
 
-st.sidebar.markdown(
-    f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>",
-    unsafe_allow_html=True
-)
-
-# Inicializa o erro (para não depender de ordem de execução)
-if 'ultimo_erro_bd' not in st.session_state:
-    st.session_state.ultimo_erro_bd = None
-
-# Testa conexão uma vez e fecha (evita “sobrar conexão aberta”)
-conn_teste = obter_conexao_bd()
-if conn_teste is not None:
-    try:
-        conn_teste.close()
-    except Exception:
-        pass
-
-st.session_state.banco_dados_conectado = conn_teste is not None
-
+st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
 if st.session_state.banco_dados_conectado:
-    st.sidebar.markdown(
-        "<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>",
-        unsafe_allow_html=True
-    )
-else:
-    st.sidebar.markdown(
-        "<p style='text-align:center; color:#f39c12; font-size:11px;'>🟡 Sem banco configurado — estoque só nesta sessão</p>",
-        unsafe_allow_html=True
-    )
-
-# Mostra a última falha SEMPRE que existir (inclusive quando não conecta)
-if st.session_state.ultimo_erro_bd:
-    st.sidebar.markdown(
-        f"<p style='text-align:center; color:#e74c3c; font-size:10px;'>⚠️ Última falha ao ler/gravar: {st.session_state.ultimo_erro_bd}</p>",
-        unsafe_allow_html=True
-    )
+    st.sidebar.markdown("<p style='text-align:center; color:#45a29e; font-size:11px;'>🟢 Banco de dados conectado — estoque salvo permanentemente</p>", unsafe_allow_html=True)
+    if st.session_state.ultimo_erro_bd:
+        st.sidebar.markdown(f"<p style='text-align:center; color:#e74c3c; font-size:10px;'>⚠️ Última falha ao ler/gravar: {st.session_state.ultimo_erro_bd}</p>", unsafe_allow_html=True)
 else:
     st.sidebar.markdown("<p style='text-align:center; color:#f39c12; font-size:11px;'>🟡 Sem banco configurado — estoque só nesta sessão</p>", unsafe_allow_html=True)
+    if st.session_state.ultimo_erro_bd:
+        st.sidebar.markdown(f"<p style='text-align:center; color:#f39c12; font-size:10px;'>Motivo: {st.session_state.ultimo_erro_bd}</p>", unsafe_allow_html=True)
 if st.sidebar.button("🚪 Sair"):
     st.session_state.autenticado = False
     st.session_state.usuario_atual = None
