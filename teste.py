@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
+import hashlib
+import os
+import binascii
+import hmac
 from datetime import datetime
 
 try:
@@ -490,6 +494,133 @@ def salvar_lote_no_banco(lista_tuplas):
         st.session_state.ultimo_erro_bd = str(e)
         return False
 
+# ==========================================
+# SENHA COM HASH (sem depender de biblioteca externa)
+# ==========================================
+def gerar_hash_senha(senha_texto_puro):
+    """PBKDF2-HMAC-SHA256 com salt aleatório — não precisa de bcrypt/passlib,
+    só o que já vem no Python padrão."""
+    salt = os.urandom(16)
+    hash_bytes = hashlib.pbkdf2_hmac('sha256', senha_texto_puro.encode('utf-8'), salt, 200_000)
+    return binascii.hexlify(salt).decode() + ':' + binascii.hexlify(hash_bytes).decode()
+
+def verificar_senha(senha_texto_puro, hash_armazenado):
+    try:
+        salt_hex, hash_hex = hash_armazenado.split(':')
+        salt = binascii.unhexlify(salt_hex)
+        hash_esperado = binascii.unhexlify(hash_hex)
+        hash_calculado = hashlib.pbkdf2_hmac('sha256', senha_texto_puro.encode('utf-8'), salt, 200_000)
+        return hmac.compare_digest(hash_calculado, hash_esperado)
+    except Exception:
+        return False
+
+# ==========================================
+# USUÁRIOS NO BANCO
+# ==========================================
+def carregar_usuarios_do_banco():
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT usuario, senha_hash, papel FROM usuarios")
+            linhas = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.session_state.ultimo_erro_bd = str(e)
+        return None
+    return {usuario: {"senha_hash": senha_hash, "papel": papel} for usuario, senha_hash, papel in linhas}
+
+def criar_usuario_no_banco(usuario, senha_hash, papel):
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO usuarios (usuario, senha_hash, papel, criado_em) VALUES (%s, %s, %s, now())",
+                (usuario, senha_hash, papel)
+            )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.session_state.ultimo_erro_bd = str(e)
+        return False
+
+def remover_usuario_no_banco(usuario):
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM usuarios WHERE usuario=%s", (usuario,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.session_state.ultimo_erro_bd = str(e)
+        return False
+
+# ==========================================
+# HISTÓRICO DE MOVIMENTAÇÕES (AUDITORIA)
+# ==========================================
+def registrar_movimentacao(chave_casulo, categoria_peca, estacao, qtd_antes, qtd_depois, tipo_movimento, usuario):
+    """Grava uma linha no histórico. Nunca bloqueia o fluxo principal — se
+    falhar, só não fica registrado, mas o estoque em si já foi salvo à parte."""
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO movimentacoes_estoque
+                (chave_casulo, categoria_peca, estacao, quantidade_anterior, quantidade_nova, tipo_movimento, usuario, registrado_em)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+            """, (chave_casulo, categoria_peca, estacao, qtd_antes, qtd_depois, tipo_movimento, usuario))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return False
+
+def carregar_historico_movimentacoes(limite=200):
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT chave_casulo, categoria_peca, estacao, quantidade_anterior, quantidade_nova, tipo_movimento, usuario, registrado_em
+                FROM movimentacoes_estoque ORDER BY registrado_em DESC LIMIT %s
+            """, (limite,))
+            linhas = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.session_state.ultimo_erro_bd = str(e)
+        return None
+    return linhas
+
 def extrair_totais_por_grupo_pdf(arquivo_pdf):
     """
     Lê um PDF no formato 'Resumo de Estoque do Grupo' (agrupado por GRUPO,
@@ -583,11 +714,21 @@ if 'busca_destaque' not in st.session_state:
 if 'aba_ativa_selecionada' not in st.session_state:
     st.session_state.aba_ativa_selecionada = "🏠 Tela Inicial (Geral)"
 
-USUARIOS_PADRAO = {
-    "admin": {"senha": "admin123", "papel": "gerente"}
-}
 if 'usuarios_cadastrados' not in st.session_state:
-    st.session_state.usuarios_cadastrados = dict(USUARIOS_PADRAO)
+    usuarios_bd = carregar_usuarios_do_banco()
+    if usuarios_bd is not None:
+        if not usuarios_bd:
+            # Banco de usuários vazio (primeira vez) — cria o admin padrão já com hash.
+            hash_admin_padrao = gerar_hash_senha("admin123")
+            criar_usuario_no_banco("admin", hash_admin_padrao, "gerente")
+            usuarios_bd = {"admin": {"senha_hash": hash_admin_padrao, "papel": "gerente"}}
+        st.session_state.usuarios_cadastrados = usuarios_bd
+    else:
+        # Sem banco disponível: mesmo comportamento em memória de sempre, mas
+        # já com a senha em hash (não fica mais em texto puro em lugar nenhum).
+        st.session_state.usuarios_cadastrados = {
+            "admin": {"senha_hash": gerar_hash_senha("admin123"), "papel": "gerente"}
+        }
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
 if 'usuario_atual' not in st.session_state:
@@ -772,7 +913,7 @@ if not st.session_state.autenticado:
 
         if submit_login:
             dados_usuario = st.session_state.usuarios_cadastrados.get(usuario_input)
-            if dados_usuario and dados_usuario["senha"] == senha_input:
+            if dados_usuario and verificar_senha(senha_input, dados_usuario["senha_hash"]):
                 st.session_state.autenticado = True
                 st.session_state.usuario_atual = usuario_input
                 st.session_state.papel_atual = dados_usuario["papel"]
@@ -1650,6 +1791,11 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                 if resultado_bd is not True and st.session_state.banco_dados_conectado:
                     st.error(f"⚠️ O banco está conectado, mas a gravação FALHOU — a mudança ficou só nesta sessão (some se a página recarregar). Erro técnico: `{st.session_state.ultimo_erro_bd}`")
                 else:
+                    registrar_movimentacao(
+                        chave_alvo, categoria_cad, estacao_cad,
+                        int(qtd_existente_combo), int(nova_qtd_input),
+                        "entrada_individual", st.session_state.usuario_atual
+                    )
                     st.success(f"Casulo {rua_cad} - {col_cad:03d}-{nivel_cad} atualizado: {categoria_cad} / {estacao_cad} = {nova_qtd_input} peças!")
                     st.rerun()
 
@@ -1670,6 +1816,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                     if resultado_bd is not True and st.session_state.banco_dados_conectado:
                         st.error(f"⚠️ O banco está conectado, mas zerar FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
                     else:
+                        registrar_movimentacao("TODOS", "-", "-", -1, 0, "zerar_tudo", st.session_state.usuario_atual)
                         st.success("Todos os casulos foram zerados com sucesso!")
                         st.rerun()
             with c_B:
@@ -1708,6 +1855,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                     if resultado_bd is not True and st.session_state.banco_dados_conectado:
                         st.error(f"⚠️ O banco está conectado, mas salvar o lote FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
                     else:
+                        registrar_movimentacao("TODOS", "-", "-", -1, len(lote_para_banco), "popular_teste", st.session_state.usuario_atual)
                         st.success("Base populada com dados de teste (categorias e estações variadas)!")
                         st.rerun()
 
@@ -1722,7 +1870,7 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
         st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🛠️ Painel do Gerenciador</h3>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #8892b0;'>Funções críticas disponíveis apenas para o papel de Gerente.</p>", unsafe_allow_html=True)
 
-        tab_ger1, tab_ger2 = st.tabs(["👥 Gestão de Logins", "🧾 Usuários Cadastrados"])
+        tab_ger1, tab_ger2, tab_ger3 = st.tabs(["👥 Gestão de Logins", "🧾 Usuários Cadastrados", "📜 Histórico de Movimentações"])
 
         with tab_ger1:
             st.markdown("#### Criar Novo Login")
@@ -1740,9 +1888,14 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                 elif novo_usuario in st.session_state.usuarios_cadastrados:
                     st.error(f"⚠️ O usuário '{novo_usuario}' já existe.")
                 else:
-                    st.session_state.usuarios_cadastrados[novo_usuario] = {"senha": nova_senha, "papel": novo_papel}
-                    st.success(f"Usuário '{novo_usuario}' criado como {novo_papel}!")
-                    st.rerun()
+                    hash_novo = gerar_hash_senha(nova_senha)
+                    resultado_bd = criar_usuario_no_banco(novo_usuario, hash_novo, novo_papel)
+                    if resultado_bd is not True and st.session_state.banco_dados_conectado:
+                        st.error(f"⚠️ O banco está conectado, mas criar o usuário FALHOU — não foi salvo. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                    else:
+                        st.session_state.usuarios_cadastrados[novo_usuario] = {"senha_hash": hash_novo, "papel": novo_papel}
+                        st.success(f"Usuário '{novo_usuario}' criado como {novo_papel}!")
+                        st.rerun()
 
             st.markdown("---")
             st.markdown("#### Remover Usuário")
@@ -1754,9 +1907,13 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                     if st.session_state.usuarios_cadastrados[usuario_remover]["papel"] == "gerente" and total_gerentes <= 1:
                         st.error("⚠️ Não é possível remover o último gerente do sistema.")
                     else:
-                        del st.session_state.usuarios_cadastrados[usuario_remover]
-                        st.success(f"Usuário '{usuario_remover}' removido!")
-                        st.rerun()
+                        resultado_bd = remover_usuario_no_banco(usuario_remover)
+                        if resultado_bd is not True and st.session_state.banco_dados_conectado:
+                            st.error(f"⚠️ O banco está conectado, mas remover FALHOU. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                        else:
+                            del st.session_state.usuarios_cadastrados[usuario_remover]
+                            st.success(f"Usuário '{usuario_remover}' removido!")
+                            st.rerun()
             else:
                 st.info("Não há outros usuários cadastrados para remover.")
 
@@ -1767,3 +1924,21 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                 for u, dados in st.session_state.usuarios_cadastrados.items()
             ])
             st.dataframe(lista_usuarios_df, use_container_width=True, hide_index=True)
+
+        with tab_ger3:
+            st.markdown("#### Últimas Movimentações")
+            if not st.session_state.banco_dados_conectado:
+                st.info("🔒 Histórico só fica disponível com o banco de dados conectado.")
+            else:
+                historico = carregar_historico_movimentacoes(limite=200)
+                if historico is None:
+                    st.warning(f"⚠️ Não consegui carregar o histórico. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                elif not historico:
+                    st.info("Nenhuma movimentação registrada ainda.")
+                else:
+                    df_historico = pd.DataFrame(
+                        historico,
+                        columns=["Casulo", "Categoria", "Estação", "Qtd. Antes", "Qtd. Depois", "Tipo", "Usuário", "Quando"]
+                    )
+                    st.dataframe(df_historico, use_container_width=True, hide_index=True)
+                    st.caption("Mostrando as últimas 200 movimentações, mais recentes primeiro.")
