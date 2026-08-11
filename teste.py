@@ -33,6 +33,18 @@ try:
 except ImportError:
     DB_LIBS_DISPONIVEIS = False
 
+import streamlit as st
+
+# Exemplo da sua variável que contém o texto base64 do Cultie
+CULTIE_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..." 
+
+# Aplica o ícone na aba
+st.set_page_config(
+    page_title="OutLog - Sistema de Gestão",
+    page_icon=CULTIE_BASE64, # <--- Coloca a variável aqui!
+    layout="wide"
+)
+
 # 1. CONFIGURAÇÃO DE PÁGINA
 st.set_page_config(
     page_title="OutLog - Sistema de Gestão por Peças",
