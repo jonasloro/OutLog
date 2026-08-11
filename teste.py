@@ -8,6 +8,7 @@ import binascii
 import hmac
 import base64
 from io import BytesIO
+from PIL import Image
 from datetime import datetime
 
 try:
