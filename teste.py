@@ -1022,7 +1022,7 @@ if not st.session_state.autenticado:
     <div class="logo-container">
         <img class="logo-icone-img" src="{MASCOTE_CULTIE_SRC}" alt="Cultie">
         <h1 class="logo-texto">OutLog</h1>
-        <div class="logo-sub">Gestão por Peças por Casulo</div>
+        <div class="logo-sub">Gestão de Peças por Casulo</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1130,7 +1130,7 @@ st.markdown(f"""
 <div class="logo-container">
     <img class="logo-icone-img" src="{MASCOTE_CULTIE_SRC}" alt="Cultie">
     <h1 class="logo-texto">OutLog</h1>
-    <div class="logo-sub">Gestão por Peças por Casulo</div>
+    <div class="logo-sub">Gestão de Peças por Casulo</div>
 </div>
 """, unsafe_allow_html=True)
 
