@@ -909,11 +909,12 @@ st.markdown("""
     .planta-rua-bloco {
         background: #1f2833;
         border: 1px solid #283845;
-        border-radius: 8px;
+        border-radius: 8px 8px 0 0;
         padding: 12px;
         text-align: center;
-        margin-bottom: 10px;
+        margin-bottom: 0;
     }
+
     .bar-container {
         width: 100%;
         background-color: #0b0c10;
@@ -1190,47 +1191,55 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
         else: return "cor-vermelho"
 
     ruas_nomes = list(ESTRUTURA_CD.keys())
-    bloco_cols = st.columns(3)
+    col_pad_esq_mapa, col_meio_mapa, col_pad_dir_mapa = st.columns([1, 6, 1])
     dados_ranking = []
 
-    for idx, rua in enumerate(ruas_nomes):
-        col_alvo = bloco_cols[idx % 3]
-        cfg_rua = ESTRUTURA_CD[rua]
+    with col_meio_mapa:
+        bloco_cols = st.columns(3)
 
-        if cfg_rua.get("tipo") == "Inexistente":
+        for idx, rua in enumerate(ruas_nomes):
+            col_alvo = bloco_cols[idx % 3]
+            cfg_rua = ESTRUTURA_CD[rua]
+
+            if cfg_rua.get("tipo") == "Inexistente":
+                with col_alvo:
+                    st.markdown(f"""
+                    <div class="planta-rua-bloco" style="border-color: #333;">
+                        <div style="font-weight: bold; font-size: 15px; color: #555;">{rua}</div>
+                        <div style="font-size: 11px; margin-top: 4px; color: #e74c3c; text-transform: uppercase; letter-spacing: 1px;">Inexistente</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                continue
+
+            soma_fracoes_rua = 0.0
+            contagem_rua = 0
+            for chave, dados_casulo in st.session_state.base_dados_cd.items():
+                r_n, lado_r, c_r, n_r = chave.split("|")
+                if r_n == rua:
+                    l_param = "par" if rua == "Rua 11" else ("impar" if lado_r == "seq" else lado_r)
+                    spec_r = obter_especificacao_casulo(rua, int(c_r), l_param)
+                    soma_fracoes_rua += calcular_fracao_ocupada(dados_casulo, spec_r["tipo_estrutural"], rua)
+                    contagem_rua += 1
+
+            pct_rua = (soma_fracoes_rua / contagem_rua * 100) if contagem_rua > 0 else 0.0
+            classe_cor = obter_classe_cor(pct_rua)
+            dados_ranking.append({"Rua": rua, "Ocupação (%)": round(pct_rua, 1)})
+
             with col_alvo:
                 st.markdown(f"""
-                <div class="planta-rua-bloco" style="border-color: #333;">
-                    <div style="font-weight: bold; font-size: 15px; color: #555;">{rua}</div>
-                    <div style="font-size: 11px; margin-top: 4px; color: #e74c3c; text-transform: uppercase; letter-spacing: 1px;">Inexistente</div>
+                <div class="planta-rua-bloco">
+                    <div style="font-weight: bold; font-size: 15px; color: #ffcc00;">{rua}</div>
+                    <div style="font-size: 12px; margin-top: 2px; color: #8892b0;">{pct_rua:.1f}% ocupado</div>
+                    <div class="bar-container">
+                        <div class="bar-fill {classe_cor}" style="width: {pct_rua}%;"></div>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
-            continue
-
-        soma_fracoes_rua = 0.0
-        contagem_rua = 0
-        for chave, dados_casulo in st.session_state.base_dados_cd.items():
-            r_n, lado_r, c_r, n_r = chave.split("|")
-            if r_n == rua:
-                l_param = "par" if rua == "Rua 11" else ("impar" if lado_r == "seq" else lado_r)
-                spec_r = obter_especificacao_casulo(rua, int(c_r), l_param)
-                soma_fracoes_rua += calcular_fracao_ocupada(dados_casulo, spec_r["tipo_estrutural"], rua)
-                contagem_rua += 1
-
-        pct_rua = (soma_fracoes_rua / contagem_rua * 100) if contagem_rua > 0 else 0.0
-        classe_cor = obter_classe_cor(pct_rua)
-        dados_ranking.append({"Rua": rua, "Ocupação (%)": round(pct_rua, 1)})
-
-        with col_alvo:
-            st.markdown(f"""
-            <div class="planta-rua-bloco">
-                <div style="font-weight: bold; font-size: 15px; color: #ffcc00;">{rua}</div>
-                <div style="font-size: 12px; margin-top: 2px; color: #8892b0;">{pct_rua:.1f}% ocupado</div>
-                <div class="bar-container">
-                    <div class="bar-fill {classe_cor}" style="width: {pct_rua}%;"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+                if st.button("🔍 Ver casulos", key=f"btn_mapa_calor_{rua}", use_container_width=True):
+                    st.session_state.busca_destaque = None
+                    st.session_state.rua_forcada_visualizador = rua
+                    st.session_state.aba_ativa_selecionada = "📦 Visualizador de Casulos"
+                    st.rerun()
 
     st.write("---")
     st.markdown("<h4 style='text-align: center; color: #ffcc00;'>📈 Ranking de Ocupação por Corredor (%)</h4>", unsafe_allow_html=True)
@@ -1258,8 +1267,11 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
     rua_inicial_idx = 0
     if st.session_state.busca_destaque and st.session_state.busca_destaque['rua'] in lista_ruas:
         rua_inicial_idx = lista_ruas.index(st.session_state.busca_destaque['rua'])
+    elif st.session_state.get('rua_forcada_visualizador') in lista_ruas:
+        rua_inicial_idx = lista_ruas.index(st.session_state.rua_forcada_visualizador)
 
     rua_selecionada = st.selectbox("Selecione a Rua para Inspeção Detalhada:", lista_ruas, index=rua_inicial_idx)
+    st.session_state.rua_forcada_visualizador = None
 
     config_rua = ESTRUTURA_CD.get(rua_selecionada, {})
 
