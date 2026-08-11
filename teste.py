@@ -34,7 +34,7 @@ except ImportError:
 
 # 1. CONFIGURAÇÃO DE PÁGINA
 st.set_page_config(
-    page_title="Stock Control - Sistema de Gestão por Peças",
+    page_title="OutLog - Sistema de Gestão por Peças",
     layout="wide",
     initial_sidebar_state="expanded"
 )
