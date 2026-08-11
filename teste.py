@@ -848,11 +848,9 @@ st.markdown("""
         filter: drop-shadow(0 0 10px rgba(255, 204, 0, 0.6));
     }
     .sidebar-mascote-img {
-        width: 34px;
+        width: 72px;
         height: auto;
-        vertical-align: middle;
-        margin-right: 6px;
-        filter: drop-shadow(0 0 6px rgba(255, 204, 0, 0.5));
+        filter: drop-shadow(0 0 8px rgba(255, 204, 0, 0.5));
     }
     .logo-texto {
         font-family: 'Trebuchet MS', sans-serif;
@@ -978,6 +976,41 @@ st.markdown("""
         background-color: #ffcc00 !important;
         color: #0b0c10 !important;
     }
+
+    /* Menu de navegação da sidebar: some com a bolinha do rádio e vira
+       item de menu estilo "pílula" clicável. */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] > div[role="radiogroup"] {
+        gap: 4px;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label {
+        background-color: #1f2833;
+        border: 1px solid #283845;
+        border-radius: 8px;
+        padding: 9px 12px;
+        width: 100%;
+        cursor: pointer;
+        transition: background-color 0.15s, border-color 0.15s;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
+        border-color: #ffcc00;
+        background-color: #283845;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label > div:first-child {
+        display: none;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"] p {
+        color: #c5c6c7;
+        font-size: 14px;
+        margin: 0;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {
+        background-color: #ffcc00;
+        border-color: #ffcc00;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) div[data-testid="stMarkdownContainer"] p {
+        color: #0b0c10;
+        font-weight: 700;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1018,9 +1051,9 @@ if not st.session_state.autenticado:
 
 # SIDEBAR: NAVEGAÇÃO
 st.sidebar.markdown(f"""
-<div style='text-align:center; padding: 4px 0 10px 0;'>
-    <img class="sidebar-mascote-img" src="{MASCOTE_CULTIE_SRC}" alt="Cultie">
-    <span style='color:#ffcc00; font-weight:900; font-size:20px; letter-spacing:1px; vertical-align:middle;'>DISTRIBOX</span>
+<div style='text-align:center; padding: 8px 0 14px 0;'>
+    <img class="sidebar-mascote-img" src="{MASCOTE_CULTIE_SRC}" alt="Cultie"><br>
+    <span style='color:#ffcc00; font-weight:900; font-size:19px; letter-spacing:2px;'>DISTRIBOX</span>
 </div>
 """, unsafe_allow_html=True)
 st.sidebar.markdown("<h2 style='color: #ffcc00; text-align: center;'>⚙️ NAVEGAÇÃO</h2>", unsafe_allow_html=True)
