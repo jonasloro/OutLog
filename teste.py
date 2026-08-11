@@ -1190,24 +1190,13 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
         elif pct < 100: return "cor-laranja"
         else: return "cor-vermelho"
 
-    ruas_nomes = list(ESTRUTURA_CD.keys())
+    ruas_nomes = [r for r in ESTRUTURA_CD.keys() if ESTRUTURA_CD[r].get("tipo") != "Inexistente"]
     bloco_cols = st.columns(3, gap="large")
     dados_ranking = []
 
     for idx, rua in enumerate(ruas_nomes):
         col_alvo = bloco_cols[idx % 3]
         cfg_rua = ESTRUTURA_CD[rua]
-
-        if cfg_rua.get("tipo") == "Inexistente":
-            with col_alvo:
-                st.markdown(f"""
-                <div class="planta-rua-bloco" style="border-color: #333;">
-                    <div style="font-weight: bold; font-size: 15px; color: #555;">{rua}</div>
-                    <div style="font-size: 11px; margin-top: 4px; color: #e74c3c; text-transform: uppercase; letter-spacing: 1px;">Inexistente</div>
-                </div>
-                """, unsafe_allow_html=True)
-                st.button("🔍 Ver casulos", key=f"btn_mapa_calor_{rua}", use_container_width=True, disabled=True)
-            continue
 
         soma_fracoes_rua = 0.0
         contagem_rua = 0
