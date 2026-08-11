@@ -1129,7 +1129,7 @@ if st.sidebar.button("Destacar no Sistema"):
 st.markdown(f"""
 <div class="logo-container">
     <img class="logo-icone-img" src="{MASCOTE_CULTIE_SRC}" alt="Cultie">
-    <h1 class="logo-texto">STOCK CONTROL</h1>
+    <h1 class="logo-texto">OutLog</h1>
     <div class="logo-sub">Gestão por Peças por Casulo</div>
 </div>
 """, unsafe_allow_html=True)
