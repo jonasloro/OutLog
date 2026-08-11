@@ -621,6 +621,76 @@ def carregar_historico_movimentacoes(limite=200):
         return None
     return linhas
 
+# ==========================================
+# RELATÓRIO DE ESTOQUE IMPORTADO (HISTÓRICO DE IMPORTAÇÕES)
+# ==========================================
+def salvar_relatorio_no_banco(grupos, nome_arquivo, importado_por):
+    """grupos: [(grupo, qtd), ...]. Cria um novo registro de importação e
+    grava os grupos vinculados a ele — NÃO apaga importações anteriores,
+    fica um histórico (a tela sempre lê a mais recente).
+    Retorna: True (salvou), False (banco configurado mas falhou), None (banco não configurado)."""
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO relatorios_importados (nome_arquivo, importado_por, importado_em) VALUES (%s, %s, now()) RETURNING id",
+                (nome_arquivo, importado_por)
+            )
+            relatorio_id = cur.fetchone()[0]
+            if grupos:
+                tamanho_bloco = 500
+                for i in range(0, len(grupos), tamanho_bloco):
+                    bloco = grupos[i:i + tamanho_bloco]
+                    marcadores = ", ".join(["(%s, %s, %s)"] * len(bloco))
+                    valores = [v for (grupo, qtd) in bloco for v in (relatorio_id, grupo, qtd)]
+                    cur.execute(
+                        f"INSERT INTO relatorio_grupos (relatorio_id, grupo, quantidade) VALUES {marcadores}",
+                        valores
+                    )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.session_state.ultimo_erro_bd = str(e)
+        return False
+
+def carregar_ultimo_relatorio_do_banco():
+    """Retorna (grupos, meta) da importação mais recente. grupos é [] se
+    nunca houve importação; None se o banco não está disponível/deu erro."""
+    conn = obter_conexao_bd()
+    if conn is None:
+        return None, None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nome_arquivo, importado_por, importado_em FROM relatorios_importados ORDER BY importado_em DESC LIMIT 1")
+            linha_meta = cur.fetchone()
+            if not linha_meta:
+                conn.close()
+                return [], None
+            relatorio_id, nome_arquivo, importado_por, importado_em = linha_meta
+            cur.execute("SELECT grupo, quantidade FROM relatorio_grupos WHERE relatorio_id=%s", (relatorio_id,))
+            grupos = cur.fetchall()
+        conn.close()
+        try:
+            importado_em_txt = importado_em.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            importado_em_txt = str(importado_em)
+        meta = {"nome_arquivo": nome_arquivo, "importado_por": importado_por, "importado_em": importado_em_txt}
+        return grupos, meta
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        st.session_state.ultimo_erro_bd = str(e)
+        return None, None
+
 def extrair_totais_por_grupo_pdf(arquivo_pdf):
     """
     Lê um PDF no formato 'Resumo de Estoque do Grupo' (agrupado por GRUPO,
@@ -737,9 +807,13 @@ if 'papel_atual' not in st.session_state:
     st.session_state.papel_atual = None
 
 if 'relatorio_estoque_grupos' not in st.session_state:
-    st.session_state.relatorio_estoque_grupos = None  # lista de (grupo, qtd)
-if 'relatorio_estoque_meta' not in st.session_state:
-    st.session_state.relatorio_estoque_meta = None  # {"nome_arquivo":..., "importado_em":...}
+    grupos_bd, meta_bd = carregar_ultimo_relatorio_do_banco()
+    if grupos_bd is not None:
+        st.session_state.relatorio_estoque_grupos = grupos_bd if grupos_bd else None
+        st.session_state.relatorio_estoque_meta = meta_bd
+    else:
+        st.session_state.relatorio_estoque_grupos = None  # lista de (grupo, qtd)
+        st.session_state.relatorio_estoque_meta = None  # {"nome_arquivo":..., "importado_em":...}
 
 
 # ==========================================
@@ -1615,13 +1689,17 @@ elif st.session_state.aba_ativa_selecionada == "📄 Importar Relatório de Esto
                         if not grupos_extraidos:
                             st.error("⚠️ Não consegui reconhecer nenhum grupo nesse PDF. Confirme que é o relatório 'Resumo de Estoque do Grupo'.")
                         else:
-                            st.session_state.relatorio_estoque_grupos = grupos_extraidos
-                            st.session_state.relatorio_estoque_meta = {
-                                "nome_arquivo": arquivo_relatorio.name,
-                                "importado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                "importado_por": st.session_state.usuario_atual,
-                            }
-                            processado_com_sucesso = True
+                            resultado_bd = salvar_relatorio_no_banco(grupos_extraidos, arquivo_relatorio.name, st.session_state.usuario_atual)
+                            if resultado_bd is not True and st.session_state.banco_dados_conectado:
+                                st.error(f"⚠️ O banco está conectado, mas salvar o relatório FALHOU — nada foi atualizado. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                            else:
+                                st.session_state.relatorio_estoque_grupos = grupos_extraidos
+                                st.session_state.relatorio_estoque_meta = {
+                                    "nome_arquivo": arquivo_relatorio.name,
+                                    "importado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "importado_por": st.session_state.usuario_atual,
+                                }
+                                processado_com_sucesso = True
                     except Exception as e:
                         st.error(f"⚠️ Não consegui ler esse PDF ({e}). Confirme que é o mesmo formato do relatório 'Resumo de Estoque do Grupo'.")
 
