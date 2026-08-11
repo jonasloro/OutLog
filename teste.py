@@ -1062,8 +1062,6 @@ if not st.session_state.autenticado:
             else:
                 st.error("⚠️ Usuário ou senha inválidos.")
 
-        st.markdown("<p style='text-align:center; color:#8892b0; font-size:11px; margin-top:10px;'>Acesso padrão inicial: <b>admin</b> / <b>admin123</b><br>(crie os logins da equipe e troque essa senha na aba Gerenciador)</p>", unsafe_allow_html=True)
-
     st.stop()
 
 # SIDEBAR: NAVEGAÇÃO
