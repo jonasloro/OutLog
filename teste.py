@@ -9,15 +9,6 @@ import hmac
 from PIL import Image
 from datetime import datetime
 
-# Carrega a sua imagem
-logo = Image.open("logo.png") 
-
-st.set_page_config(
-    page_title="OutLog - Sistema de Gestão",
-    page_icon=logo,  # Passa a imagem carregada
-    layout="wide"
-)
-
 try:
     import pypdf
     PYPDF_DISPONIVEL = True
