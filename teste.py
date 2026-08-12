@@ -1487,18 +1487,71 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
 # ==========================================
 elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos":
     st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🔍 Auditoria Rápida de Múltiplos Casulos</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #8892b0;'>Selecione ou insira endereços para auditar simultaneamente a ocupação.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #8892b0;'>Digite um ou mais endereços (um por linha), no formato <b>003-B-009</b>.</p>", unsafe_allow_html=True)
 
-    chaves_disponiveis = sorted(list(st.session_state.base_dados_cd.keys()))
-
-    casulos_selecionados = st.multiselect(
-        "Selecione os Casulos (Formato: Rua|Lado|Coluna|Nível):",
-        options=chaves_disponiveis,
-        default=chaves_disponiveis[:3] if len(chaves_disponiveis) >= 3 else chaves_disponiveis
+    texto_busca_rapida = st.text_area(
+        "Endereços dos Casulos:",
+        placeholder="003-B-009\n010-G-022\n014-D-005",
+        height=100
     )
 
+    casulos_selecionados = []
+    erros_busca_rapida = []
+
+    for linha_busca in texto_busca_rapida.splitlines():
+        linha_busca = linha_busca.strip()
+        if not linha_busca:
+            continue
+
+        tokens_busca = re.findall(r'[A-Za-z0-9]+', linha_busca)
+        if len(tokens_busca) < 3:
+            erros_busca_rapida.append(f"'{linha_busca}': formato inválido (use ex: 003-B-009)")
+            continue
+
+        try:
+            num_rua_busca = int(tokens_busca[0])
+            col_busca = int(tokens_busca[2])
+        except ValueError:
+            erros_busca_rapida.append(f"'{linha_busca}': rua ou coluna inválida")
+            continue
+        nivel_busca = tokens_busca[1].upper()
+        rua_alvo_busca = f"Rua {num_rua_busca:02d}"
+
+        cfg_busca = ESTRUTURA_CD.get(rua_alvo_busca)
+        if not cfg_busca or cfg_busca.get("tipo") == "Inexistente":
+            erros_busca_rapida.append(f"'{linha_busca}': {rua_alvo_busca} não existe")
+            continue
+
+        todos_da_rua_busca = cfg_busca.get("cols_impar", []) + cfg_busca.get("cols_par", []) + cfg_busca.get("cols_seq", [])
+        if todos_da_rua_busca and col_busca not in todos_da_rua_busca:
+            erros_busca_rapida.append(f"'{linha_busca}': coluna {col_busca:03d} não existe na {rua_alvo_busca}")
+            continue
+
+        if "cols_seq" in cfg_busca:
+            lado_busca = "seq"
+        elif rua_alvo_busca == "Rua 11":
+            lado_busca = "par"
+        elif col_busca in cfg_busca.get("cols_impar", []):
+            lado_busca = "impar"
+        elif col_busca in cfg_busca.get("cols_par", []):
+            lado_busca = "par"
+        else:
+            erros_busca_rapida.append(f"'{linha_busca}': não consegui determinar o lado da coluna {col_busca:03d}")
+            continue
+
+        chave_busca = obter_chave_casulo(rua_alvo_busca, lado_busca, col_busca, nivel_busca)
+        if chave_busca not in st.session_state.base_dados_cd:
+            erros_busca_rapida.append(f"'{linha_busca}': casulo {rua_alvo_busca} {col_busca:03d}-{nivel_busca} não existe (nível inválido para este tipo de casulo)")
+            continue
+
+        if chave_busca not in casulos_selecionados:
+            casulos_selecionados.append(chave_busca)
+
+    for erro_busca in erros_busca_rapida:
+        st.warning(f"⚠️ {erro_busca}")
+
     if not casulos_selecionados:
-        st.info("💡 Nenhum casulo selecionado acima. Utilize a caixa de seleção para escolher os endereços que deseja auditar.")
+        st.info("💡 Digite um ou mais endereços acima, no formato 003-B-009 (um por linha), para auditar.")
     else:
         st.write("---")
         st.caption("Para lançar ou ajustar quantidades, use a aba 📥 Entrada de Dados (o lançamento precisa da categoria da peça e da estação).")
