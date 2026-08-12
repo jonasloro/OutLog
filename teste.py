@@ -2112,10 +2112,26 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                 elif not historico:
                     st.info("Nenhuma movimentação registrada ainda.")
                 else:
-                    df_historico = pd.DataFrame(
-                        historico,
-                        columns=["Casulo", "Categoria", "Estação", "Qtd. Antes", "Qtd. Depois", "Tipo", "Usuário", "Quando"]
-                    )
+                    linhas_historico_split = []
+                    for chave_hist, categoria_hist, estacao_hist, qtd_antes_hist, qtd_depois_hist, tipo_hist, usuario_hist, quando_hist in historico:
+                        if chave_hist == "TODOS" or chave_hist.count("|") != 3:
+                            rua_hist, lado_hist, col_hist, nivel_hist = chave_hist, "-", "-", "-"
+                        else:
+                            rua_hist, lado_hist, col_hist, nivel_hist = chave_hist.split("|")
+                        linhas_historico_split.append({
+                            "Rua": rua_hist,
+                            "Lado": lado_hist,
+                            "Coluna": col_hist,
+                            "Nível": nivel_hist,
+                            "Categoria": categoria_hist,
+                            "Estação": estacao_hist,
+                            "Qtd. Antes": qtd_antes_hist,
+                            "Qtd. Depois": qtd_depois_hist,
+                            "Tipo": tipo_hist,
+                            "Usuário": usuario_hist,
+                            "Quando": quando_hist,
+                        })
+                    df_historico = pd.DataFrame(linhas_historico_split)
                     st.dataframe(df_historico, use_container_width=True, hide_index=True)
                     st.caption("Mostrando as últimas 200 movimentações, mais recentes primeiro.")
 
