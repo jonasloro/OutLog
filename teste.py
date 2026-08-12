@@ -18,6 +18,12 @@ except ImportError:
     PYPDF_DISPONIVEL = False
 
 try:
+    import openpyxl
+    OPENPYXL_DISPONIVEL = True
+except ImportError:
+    OPENPYXL_DISPONIVEL = False
+
+try:
     import psycopg2
     PSYCOPG2_DISPONIVEL = True
 except ImportError:
@@ -321,6 +327,25 @@ def obter_capacidade_estimada_exibicao(tipo_estrutural, rua_nome):
 
 def calcular_pecas_totais(dados_casulo):
     return sum(dados_casulo.values()) if dados_casulo else 0
+
+def botao_exportar_excel(df, nome_arquivo, label="📥 Baixar em Excel (.xlsx)", key=None):
+    """Gera um .xlsx de verdade (células reais) em vez de depender do CSV
+    embutido do st.dataframe, que quebra no Excel em pt-BR (separador ; vs ,)."""
+    if df is None or df.empty:
+        return
+    if not OPENPYXL_DISPONIVEL:
+        st.caption("⚠️ Exportação em Excel indisponível neste ambiente (adicione `openpyxl` ao requirements.txt do repositório).")
+        return
+    buffer_excel = BytesIO()
+    with pd.ExcelWriter(buffer_excel, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Dados")
+    st.download_button(
+        label=label,
+        data=buffer_excel.getvalue(),
+        file_name=nome_arquivo,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=key,
+    )
 
 def calcular_fracao_ocupada(dados_casulo, tipo_estrutural, rua_nome):
     """
@@ -1076,7 +1101,7 @@ if st.session_state.papel_atual == "gerente":
 if st.session_state.aba_ativa_selecionada not in opcoes_telas:
     st.session_state.aba_ativa_selecionada = "🏠 Tela Inicial (Geral)"
 
-st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
+st.sidebar.radio("Selecione a Tela:", opcoes_telas, key="aba_ativa_selecionada")
 
 st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
 if st.session_state.banco_dados_conectado:
@@ -1651,6 +1676,7 @@ elif st.session_state.aba_ativa_selecionada == "📊 Estatísticas de Casulos":
             .sort_values(["Gênero", "Tipo de Casulo"])
         )
         st.dataframe(df_resumo_genero_tipo, use_container_width=True, hide_index=True)
+        botao_exportar_excel(df_resumo_genero_tipo, "resumo_genero_tipo_casulos.xlsx", key="export_resumo_genero_tipo")
 
         st.markdown("<h4 style='text-align: center; color: #ffcc00;'>Totais por Gênero</h4>", unsafe_allow_html=True)
         df_totais_genero = (
@@ -1671,10 +1697,12 @@ elif st.session_state.aba_ativa_selecionada == "📊 Estatísticas de Casulos":
 
         st.write("---")
         with st.expander("🔎 Ver detalhe por Rua"):
+            df_detalhe_casulos_ordenado = df_detalhe_casulos.sort_values(["Gênero", "Rua", "Tipo de Casulo"])
             st.dataframe(
-                df_detalhe_casulos.sort_values(["Gênero", "Rua", "Tipo de Casulo"]),
+                df_detalhe_casulos_ordenado,
                 use_container_width=True, hide_index=True
             )
+            botao_exportar_excel(df_detalhe_casulos_ordenado, "detalhe_casulos_por_rua.xlsx", key="export_detalhe_rua")
 
         st.caption("Capacidade/Casulo (ref.) usa: densidade fixa por rua quando existir (masculino, ruas 15-21), senão a categoria de referência 'Camisetas/Camisas M.Curta Finas' da tabela de Verão. É uma referência pra visão geral — a ocupação real de cada casulo depende do mix de categorias realmente guardado nele.")
 
@@ -1847,13 +1875,19 @@ elif st.session_state.aba_ativa_selecionada == "📄 Importar Relatório de Esto
         col_rel1, col_rel2 = st.columns(2)
         with col_rel1:
             st.markdown("<h5 style='color:#ffcc00;'>Feminino por Grupo</h5>", unsafe_allow_html=True)
-            st.dataframe(pd.DataFrame(fem_rel, columns=["Grupo", "Peças"]), use_container_width=True, hide_index=True)
+            df_fem_rel = pd.DataFrame(fem_rel, columns=["Grupo", "Peças"])
+            st.dataframe(df_fem_rel, use_container_width=True, hide_index=True)
+            botao_exportar_excel(df_fem_rel, "estoque_feminino_por_grupo.xlsx", key="export_fem_rel")
         with col_rel2:
             st.markdown("<h5 style='color:#ffcc00;'>Masculino por Grupo</h5>", unsafe_allow_html=True)
-            st.dataframe(pd.DataFrame(masc_rel, columns=["Grupo", "Peças"]), use_container_width=True, hide_index=True)
+            df_masc_rel = pd.DataFrame(masc_rel, columns=["Grupo", "Peças"])
+            st.dataframe(df_masc_rel, use_container_width=True, hide_index=True)
+            botao_exportar_excel(df_masc_rel, "estoque_masculino_por_grupo.xlsx", key="export_masc_rel")
 
         with st.expander("Ver grupos sem gênero (Sacola, Suprimento, Transferência etc.)"):
-            st.dataframe(pd.DataFrame(outros_rel, columns=["Grupo", "Peças"]), use_container_width=True, hide_index=True)
+            df_outros_rel = pd.DataFrame(outros_rel, columns=["Grupo", "Peças"])
+            st.dataframe(df_outros_rel, use_container_width=True, hide_index=True)
+            botao_exportar_excel(df_outros_rel, "estoque_outros_grupos.xlsx", key="export_outros_rel")
 
         st.caption("Esses grupos vêm do seu ERP e usam uma nomenclatura própria (ex: 'BLUSA FEMIN'), diferente das categorias do motor de capacidade (ex: 'Camisetas/Camisas M.Curta Finas'). Por enquanto essa tela só mostra o retrato real do estoque — cruzar automaticamente com a capacidade dos casulos é um próximo passo.")
 
@@ -1872,6 +1906,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
             for cat, tipos in CAPACIDADE_VERAO_FEMININO.items()
         ])
         st.dataframe(df_verao, use_container_width=True, hide_index=True)
+        botao_exportar_excel(df_verao, "capacidade_verao_feminino.xlsx", key="export_verao")
 
         st.markdown("**Inverno - Feminino** (peças por casulo, faixa mín-máx)")
         df_inverno = pd.DataFrame([
@@ -1879,6 +1914,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
             for cat, tipos in CAPACIDADE_INVERNO_FEMININO.items()
         ])
         st.dataframe(df_inverno, use_container_width=True, hide_index=True)
+        botao_exportar_excel(df_inverno, "capacidade_inverno_feminino.xlsx", key="export_inverno")
 
         st.markdown("**Densidade fixa por rua (Masculino)** — sobrepõe a tabela de categoria")
         df_fixa = pd.DataFrame([
@@ -1887,6 +1923,7 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
             for tipo, valor in tipos.items()
         ])
         st.dataframe(df_fixa, use_container_width=True, hide_index=True)
+        botao_exportar_excel(df_fixa, "capacidade_fixa_por_rua.xlsx", key="export_fixa")
 
         st.caption("O sistema usa sempre o valor MÍNIMO da faixa como capacidade real (ou a densidade fixa, quando existir). Meia-Estação reaproveita a tabela de Verão. Travas rígidas: P máx 6 peças, Vestidos em M máx 4 peças, em qualquer rua.")
 
@@ -2100,6 +2137,7 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                 for u, dados in st.session_state.usuarios_cadastrados.items()
             ])
             st.dataframe(lista_usuarios_df, use_container_width=True, hide_index=True)
+            botao_exportar_excel(lista_usuarios_df, "usuarios_cadastrados.xlsx", key="export_usuarios")
 
         with tab_ger3:
             st.markdown("#### Últimas Movimentações")
@@ -2133,6 +2171,7 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                         })
                     df_historico = pd.DataFrame(linhas_historico_split)
                     st.dataframe(df_historico, use_container_width=True, hide_index=True)
+                    botao_exportar_excel(df_historico, "historico_movimentacoes.xlsx", key="export_historico")
                     st.caption("Mostrando as últimas 200 movimentações, mais recentes primeiro.")
 
         with tab_ger4:
