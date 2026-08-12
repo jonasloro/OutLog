@@ -1940,22 +1940,10 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
         if st.session_state.papel_atual != "gerente":
             st.info("🔒 Ações globais na base são funções críticas, restritas ao papel de Gerente.")
         else:
-            st.warning("⚠️ Atenção: Os botões abaixo modificam permanentemente a quantidade de peças em todo o CD na memória.")
+            st.warning("⚠️ Atenção: O botão abaixo modifica permanentemente a quantidade de peças em todo o CD na memória.")
+            st.caption("A ação de zerar todos os casulos foi movida para a aba 🛠️ Gerenciador.")
 
-            c_A, c_B = st.columns(2)
-            with c_A:
-                if st.button("Zerar Todos os Casulos (0 Peças)"):
-                    for k in st.session_state.base_dados_cd.keys():
-                        st.session_state.base_dados_cd[k] = {}
-                    resultado_bd = zerar_tudo_no_banco()
-                    if resultado_bd is not True and st.session_state.banco_dados_conectado:
-                        st.error(f"⚠️ O banco está conectado, mas zerar FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
-                    else:
-                        registrar_movimentacao("TODOS", "-", "-", -1, 0, "zerar_tudo", st.session_state.usuario_atual)
-                        st.success("Todos os casulos foram zerados com sucesso!")
-                        st.rerun()
-            with c_B:
-                if st.button("Popular com Dados Simulados Aleatórios"):
+            if st.button("Popular com Dados Simulados Aleatórios"):
                     np.random.seed(321)
                     for k in st.session_state.base_dados_cd.keys():
                         r_n, l_n, c_n, n_n = k.split("|")
@@ -2005,7 +1993,7 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
         st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🛠️ Painel do Gerenciador</h3>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #8892b0;'>Funções críticas disponíveis apenas para o papel de Gerente.</p>", unsafe_allow_html=True)
 
-        tab_ger1, tab_ger2, tab_ger3 = st.tabs(["👥 Gestão de Logins", "🧾 Usuários Cadastrados", "📜 Histórico de Movimentações"])
+        tab_ger1, tab_ger2, tab_ger3, tab_ger4 = st.tabs(["👥 Gestão de Logins", "🧾 Usuários Cadastrados", "📜 Histórico de Movimentações", "🧹 Ações Globais"])
 
         with tab_ger1:
             st.markdown("#### Criar Novo Login")
@@ -2077,3 +2065,34 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                     )
                     st.dataframe(df_historico, use_container_width=True, hide_index=True)
                     st.caption("Mostrando as últimas 200 movimentações, mais recentes primeiro.")
+
+        with tab_ger4:
+            st.markdown("#### Zerar Todos os Casulos")
+            st.warning("⚠️ Esta ação apaga permanentemente a quantidade de peças de TODOS os casulos do CD. Não pode ser desfeita.")
+
+            if 'confirmar_zerar_tudo' not in st.session_state:
+                st.session_state.confirmar_zerar_tudo = False
+
+            if not st.session_state.confirmar_zerar_tudo:
+                if st.button("🗑️ Zerar Todos os Casulos (0 Peças)", type="primary"):
+                    st.session_state.confirmar_zerar_tudo = True
+                    st.rerun()
+            else:
+                st.error("❗ Tem certeza? Todos os casulos do CD inteiro serão zerados agora.")
+                col_conf1, col_conf2 = st.columns(2)
+                with col_conf1:
+                    if st.button("✅ Sim, zerar tudo", type="primary"):
+                        for k in st.session_state.base_dados_cd.keys():
+                            st.session_state.base_dados_cd[k] = {}
+                        resultado_bd = zerar_tudo_no_banco()
+                        st.session_state.confirmar_zerar_tudo = False
+                        if resultado_bd is not True and st.session_state.banco_dados_conectado:
+                            st.error(f"⚠️ O banco está conectado, mas zerar FALHOU — a mudança ficou só nesta sessão. Erro técnico: `{st.session_state.ultimo_erro_bd}`")
+                        else:
+                            registrar_movimentacao("TODOS", "-", "-", -1, 0, "zerar_tudo", st.session_state.usuario_atual)
+                            st.success("Todos os casulos foram zerados com sucesso!")
+                            st.rerun()
+                with col_conf2:
+                    if st.button("❌ Cancelar"):
+                        st.session_state.confirmar_zerar_tudo = False
+                        st.rerun()
