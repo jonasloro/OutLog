@@ -5,3 +5,4 @@ pypdf
 supabase
 psycopg2-binary
 pillow
+openpyxl
