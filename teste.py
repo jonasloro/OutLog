@@ -53,7 +53,7 @@ st.set_page_config(
 # BLOCO 1: CAMADA DE DADOS E ESTADO DO SISTEMA
 # ==========================================
 
-ESTRUTURA_CD = {
+ESTRUTURA_CD_PADRAO = {
     "Rua 01": {"tipo": "Morta", "cols_impar": [], "cols_par": []},
     "Rua 02": {"tipo": "Misto_Transicao", "cols_impar": list(range(21, 94, 2)), "cols_par": list(range(22, 103, 2)) + list(range(103, 141))},
     "Rua 03": {"tipo": "P", "cols_impar": list(range(1, 101, 2)), "cols_par": list(range(2, 102, 2))},
@@ -80,7 +80,7 @@ ESTRUTURA_CD = {
 # Mapeamento de gênero por rua, conforme sua apresentação (slides "Estoque
 # Feminino" e "Estoque Masculino"). Usado para escolher a tabela de
 # capacidade correta.
-RUA_GENERO = {
+RUA_GENERO_PADRAO = {
     "Rua 02": "Feminino", "Rua 03": "Feminino", "Rua 04": "Feminino",
     "Rua 05": "Feminino", "Rua 06": "Feminino", "Rua 07": "Feminino",
     "Rua 08": "Feminino", "Rua 09": "Feminino", "Rua 10": "Feminino",
@@ -106,7 +106,7 @@ NIVEIS_METAL_5 = ["B", "C", "D", "E", "F"]
 # sempre o MÍNIMO da faixa (decisão tomada com você: mais conservador).
 # None = combinação proibida (ex: jaqueta pesada em aramado).
 
-CAPACIDADE_VERAO_FEMININO = {
+CAPACIDADE_VERAO_FEMININO_PADRAO = {
     "Regatas/Bodys/Tops/Croppeds":              {"P": (8, 10),  "M": (16, 20), "G": (35, 40), "Metal Raso (GG)": (80, 100),  "Madeira/Metal Prof. (3G)": (180, 220)},
     "Camisetas/Camisas M.Curta Finas":          {"P": (7, 8),   "M": (14, 16), "G": (28, 32), "Metal Raso (GG)": (60, 70),   "Madeira/Metal Prof. (3G)": (130, 160)},
     "Shorts Finos/Bermudas Verão/Saia":         {"P": (5, 6),   "M": (10, 12), "G": (20, 24), "Metal Raso (GG)": (45, 55),   "Madeira/Metal Prof. (3G)": (100, 120)},
@@ -116,7 +116,7 @@ CAPACIDADE_VERAO_FEMININO = {
     "Vestidos Longos":                          {"P": (1, 2),   "M": (3, 4),   "G": (7, 8),   "Metal Raso (GG)": (15, 18),   "Madeira/Metal Prof. (3G)": (30, 40)},
 }
 
-CAPACIDADE_INVERNO_FEMININO = {
+CAPACIDADE_INVERNO_FEMININO_PADRAO = {
     "Camisetas M.Longa/Cacharrel Fina":     {"P": (5, 6), "M": (10, 12), "G": (20, 24), "Metal Raso (GG)": (40, 50), "Madeira/Metal Prof. (3G)": (90, 110)},
     "Tricots Leves/Blusões Finos":          {"P": (3, 4), "M": (6, 8),   "G": (12, 15), "Metal Raso (GG)": (25, 30), "Madeira/Metal Prof. (3G)": (55, 70)},
     "Calças Jeans/Moletons/Corduroy":       {"P": (2, 3), "M": (4, 5),   "G": (8, 10),  "Metal Raso (GG)": (20, 25), "Madeira/Metal Prof. (3G)": (45, 55)},
@@ -127,10 +127,22 @@ CAPACIDADE_INVERNO_FEMININO = {
 # ⚠️ PLACEHOLDER: ainda não recebi a tabela real de capacidade do estoque
 # MASCULINO. Até você me passar os números, as ruas masculinas usam a
 # tabela feminina como estimativa provisória (a UI avisa isso claramente).
-CAPACIDADE_VERAO_MASCULINO = CAPACIDADE_VERAO_FEMININO
-CAPACIDADE_INVERNO_MASCULINO = CAPACIDADE_INVERNO_FEMININO
+CAPACIDADE_VERAO_MASCULINO_PADRAO = CAPACIDADE_VERAO_FEMININO_PADRAO
+CAPACIDADE_INVERNO_MASCULINO_PADRAO = CAPACIDADE_INVERNO_FEMININO_PADRAO
 
 ESTACOES_PECA = ["Verão", "Inverno", "Meia-Estação"]
+
+# Fonte em código apenas como fallback. Na inicialização, os nomes abaixo
+# são substituídos pelos dados persistidos no Supabase quando disponíveis.
+ESTRUTURA_CD = dict(ESTRUTURA_CD_PADRAO)
+RUA_GENERO = dict(RUA_GENERO_PADRAO)
+CAPACIDADE_VERAO_FEMININO = dict(CAPACIDADE_VERAO_FEMININO_PADRAO)
+CAPACIDADE_INVERNO_FEMININO = dict(CAPACIDADE_INVERNO_FEMININO_PADRAO)
+CAPACIDADE_VERAO_MASCULINO = dict(CAPACIDADE_VERAO_MASCULINO_PADRAO)
+CAPACIDADE_INVERNO_MASCULINO = dict(CAPACIDADE_INVERNO_MASCULINO_PADRAO)
+CATEGORIAS_POR_ESTACAO_FEMININO = dict(CATEGORIAS_POR_ESTACAO_FEMININO_PADRAO)
+CATEGORIAS_POR_ESTACAO_MASCULINO = dict(CATEGORIAS_POR_ESTACAO_MASCULINO_PADRAO)
+CAPACIDADE_FIXA_POR_RUA = dict(CAPACIDADE_FIXA_POR_RUA_PADRAO)
 
 def obter_tabelas_genero(genero):
     if genero == "Masculino":
@@ -140,15 +152,15 @@ def obter_tabelas_genero(genero):
 # Meia-Estação não teve tabela própria na apresentação — reaproveita a de
 # Verão (feminina ou masculina, conforme a rua) até você me passar uma
 # tabela específica.
-CATEGORIAS_POR_ESTACAO_FEMININO = {
-    "Verão": list(CAPACIDADE_VERAO_FEMININO.keys()),
-    "Meia-Estação": list(CAPACIDADE_VERAO_FEMININO.keys()),
-    "Inverno": list(CAPACIDADE_INVERNO_FEMININO.keys()),
+CATEGORIAS_POR_ESTACAO_FEMININO_PADRAO = {
+    "Verão": list(CAPACIDADE_VERAO_FEMININO_PADRAO.keys()),
+    "Meia-Estação": list(CAPACIDADE_VERAO_FEMININO_PADRAO.keys()),
+    "Inverno": list(CAPACIDADE_INVERNO_FEMININO_PADRAO.keys()),
 }
-CATEGORIAS_POR_ESTACAO_MASCULINO = {
-    "Verão": list(CAPACIDADE_VERAO_MASCULINO.keys()),
-    "Meia-Estação": list(CAPACIDADE_VERAO_MASCULINO.keys()),
-    "Inverno": list(CAPACIDADE_INVERNO_MASCULINO.keys()),
+CATEGORIAS_POR_ESTACAO_MASCULINO_PADRAO = {
+    "Verão": list(CAPACIDADE_VERAO_MASCULINO_PADRAO.keys()),
+    "Meia-Estação": list(CAPACIDADE_VERAO_MASCULINO_PADRAO.keys()),
+    "Inverno": list(CAPACIDADE_INVERNO_MASCULINO_PADRAO.keys()),
 }
 
 def obter_categorias_por_estacao(genero):
@@ -193,7 +205,7 @@ TRAVA_MAXIMA_M_VESTIDOS = 4     # vestidos em casulo M
 # enquanto (aguardando mapeamento físico exato). Onde não há densidade fixa
 # aqui (feminino, e os tipos GG/madeira ainda não cobertos), o sistema cai
 # para a tabela por categoria.
-CAPACIDADE_FIXA_POR_RUA = {
+CAPACIDADE_FIXA_POR_RUA_PADRAO = {
     "Rua 15": {"aramado_M": 7, "aramado_G": 12},
     "Rua 16": {"aramado_G": 10},
     "Rua 17": {"aramado_G": 12},
@@ -418,6 +430,273 @@ def obter_conexao_bd():
     except Exception as e:
         st.session_state.ultimo_erro_bd = f"falha ao conectar no Postgres: {e}"
         return None
+
+# ==========================================
+# CONFIGURAÇÕES DO CD NO SUPABASE
+# ==========================================
+
+def _parse_lista_inteiros_config(valor):
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return []
+    if isinstance(valor, (list, tuple)):
+        itens = valor
+    else:
+        itens = re.split(r"[,;\s]+", str(valor).strip())
+    resultado = []
+    for item in itens:
+        if item in (None, ""):
+            continue
+        try:
+            resultado.append(int(item))
+        except (TypeError, ValueError):
+            raise ValueError(f"Lista contém valor inválido: {item}")
+    return resultado
+
+def _lista_para_texto_config(valor):
+    return ", ".join(str(int(x)) for x in (valor or []))
+
+def _reconstruir_indices_capacidade():
+    global CATEGORIAS_POR_ESTACAO_FEMININO, CATEGORIAS_POR_ESTACAO_MASCULINO
+    CATEGORIAS_POR_ESTACAO_FEMININO = {
+        estacao: list(CAPACIDADE_VERAO_FEMININO.keys()) if estacao == "Meia-Estação" else list((CAPACIDADE_VERAO_FEMININO if estacao == "Verão" else CAPACIDADE_INVERNO_FEMININO).keys())
+        for estacao in ESTACOES_PECA
+    }
+    CATEGORIAS_POR_ESTACAO_MASCULINO = {
+        estacao: list(CAPACIDADE_VERAO_MASCULINO.keys()) if estacao == "Meia-Estação" else list((CAPACIDADE_VERAO_MASCULINO if estacao == "Verão" else CAPACIDADE_INVERNO_MASCULINO).keys())
+        for estacao in ESTACOES_PECA
+    }
+
+def _aplicar_configuracoes_do_banco(linhas_estrutura, linhas_capacidade, linhas_fixas):
+    global ESTRUTURA_CD, RUA_GENERO
+    global CAPACIDADE_VERAO_FEMININO, CAPACIDADE_INVERNO_FEMININO
+    global CAPACIDADE_VERAO_MASCULINO, CAPACIDADE_INVERNO_MASCULINO
+    global CAPACIDADE_FIXA_POR_RUA
+
+    estrutura_nova = {}
+    genero_novo = {}
+    for row in linhas_estrutura:
+        rua, tipo, genero, cols_impar, cols_par, cols_seq, metal, metal_cols = row
+        estrutura_nova[str(rua)] = {
+            "tipo": str(tipo or ""),
+            "cols_impar": [int(x) for x in (cols_impar or [])],
+            "cols_par": [int(x) for x in (cols_par or [])],
+        }
+        if cols_seq:
+            estrutura_nova[str(rua)]["cols_seq"] = [int(x) for x in cols_seq]
+        if metal:
+            estrutura_nova[str(rua)]["metal"] = [int(x) for x in metal]
+        if metal_cols:
+            estrutura_nova[str(rua)]["metal_cols"] = [int(x) for x in metal_cols]
+        genero_novo[str(rua)] = str(genero or "Feminino")
+
+    if estrutura_nova:
+        ESTRUTURA_CD = estrutura_nova
+        RUA_GENERO = genero_novo
+
+    tabelas = {
+        "Feminino": {"Verão": {}, "Inverno": {}, "Meia-Estação": {}},
+        "Masculino": {"Verão": {}, "Inverno": {}, "Meia-Estação": {}},
+    }
+    for row in linhas_capacidade:
+        genero, estacao, categoria, tipo_casulo, minimo, maximo = row
+        genero = str(genero)
+        estacao = str(estacao)
+        categoria = str(categoria)
+        tipo_casulo = str(tipo_casulo)
+        faixa = None if minimo is None or maximo is None else (int(minimo), int(maximo))
+        tabelas.setdefault(genero, {}).setdefault(estacao, {})
+        tabelas[genero][estacao].setdefault(categoria, {})[tipo_casulo] = faixa
+
+    CAPACIDADE_VERAO_FEMININO = tabelas.get("Feminino", {}).get("Verão", {})
+    CAPACIDADE_INVERNO_FEMININO = tabelas.get("Feminino", {}).get("Inverno", {})
+    CAPACIDADE_VERAO_MASCULINO = tabelas.get("Masculino", {}).get("Verão", {})
+    CAPACIDADE_INVERNO_MASCULINO = tabelas.get("Masculino", {}).get("Inverno", {})
+
+    fixa_nova = {}
+    for row in linhas_fixas:
+        rua, tipo_casulo, capacidade = row
+        fixa_nova.setdefault(str(rua), {})[str(tipo_casulo)] = int(capacidade)
+    if fixa_nova:
+        CAPACIDADE_FIXA_POR_RUA = fixa_nova
+
+    _reconstruir_indices_capacidade()
+
+def carregar_configuracoes_do_banco():
+    conn = obter_conexao_bd()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT rua, tipo, genero, cols_impar, cols_par, cols_seq, metal, metal_cols
+                FROM casulos_estrutura ORDER BY rua
+            """)
+            linhas_estrutura = cur.fetchall()
+            cur.execute("""
+                SELECT genero, estacao, categoria, tipo_casulo, minimo_pecas, maximo_pecas
+                FROM capacidade_categoria
+                ORDER BY genero, estacao, categoria, tipo_casulo
+            """)
+            linhas_capacidade = cur.fetchall()
+            cur.execute("""
+                SELECT rua, tipo_casulo, capacidade
+                FROM capacidade_fixa_rua ORDER BY rua, tipo_casulo
+            """)
+            linhas_fixas = cur.fetchall()
+        conn.close()
+        if not linhas_estrutura or not linhas_capacidade:
+            st.session_state.ultimo_erro_bd = "as tabelas de configuração existem, mas estão vazias"
+            return False
+        _aplicar_configuracoes_do_banco(linhas_estrutura, linhas_capacidade, linhas_fixas)
+        st.session_state.ultimo_erro_bd = None
+        return True
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd = f"falha ao carregar configurações: {e}"
+        return False
+
+def carregar_estrutura_para_editor():
+    conn = obter_conexao_bd()
+    if conn is None: return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT rua, tipo, genero, cols_impar, cols_par, cols_seq, metal, metal_cols FROM casulos_estrutura ORDER BY rua")
+            rows = cur.fetchall()
+        conn.close()
+        return pd.DataFrame([{
+            "Rua": r, "Tipo": tipo, "Gênero": genero,
+            "Colunas Ímpares": _lista_para_texto_config(cols_impar),
+            "Colunas Pares": _lista_para_texto_config(cols_par),
+            "Colunas Sequenciais": _lista_para_texto_config(cols_seq),
+            "Metais": _lista_para_texto_config(metal),
+            "Metais Colunas": _lista_para_texto_config(metal_cols),
+        } for r, tipo, genero, cols_impar, cols_par, cols_seq, metal, metal_cols in rows])
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd = f"falha ao carregar estrutura para edição: {e}"
+        return None
+
+def salvar_estrutura_do_editor(df):
+    conn = obter_conexao_bd()
+    if conn is None: return False
+    try:
+        registros, ruas_vistas = [], set()
+        for _, row in df.iterrows():
+            rua, tipo, genero = str(row.get("Rua", "")).strip(), str(row.get("Tipo", "")).strip(), str(row.get("Gênero", "")).strip()
+            if not rua: raise ValueError("Existe uma linha sem Rua.")
+            if rua in ruas_vistas: raise ValueError(f"A rua {rua} está duplicada.")
+            if genero not in {"Feminino", "Masculino"}: raise ValueError(f"Gênero inválido na {rua}: {genero}")
+            ruas_vistas.add(rua)
+            registros.append((rua, tipo, genero,
+                _parse_lista_inteiros_config(row.get("Colunas Ímpares", "")),
+                _parse_lista_inteiros_config(row.get("Colunas Pares", "")),
+                _parse_lista_inteiros_config(row.get("Colunas Sequenciais", "")),
+                _parse_lista_inteiros_config(row.get("Metais", "")),
+                _parse_lista_inteiros_config(row.get("Metais Colunas", ""))))
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM casulos_estrutura")
+            cur.executemany("""
+                INSERT INTO casulos_estrutura
+                (rua, tipo, genero, cols_impar, cols_par, cols_seq, metal, metal_cols)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, registros)
+        conn.commit(); conn.close()
+        return carregar_configuracoes_do_banco()
+    except Exception as e:
+        try: conn.rollback(); conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd = f"falha ao salvar estrutura: {e}"
+        return False
+
+def carregar_capacidade_para_editor():
+    conn = obter_conexao_bd()
+    if conn is None: return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT genero, estacao, categoria, tipo_casulo, minimo_pecas, maximo_pecas FROM capacidade_categoria ORDER BY genero, estacao, categoria, tipo_casulo")
+            rows = cur.fetchall()
+        conn.close()
+        return pd.DataFrame(rows, columns=["Gênero", "Estação", "Categoria", "Tipo de Casulo", "Mínimo", "Máximo"])
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd = f"falha ao carregar capacidades para edição: {e}"
+        return None
+
+def salvar_capacidade_do_editor(df):
+    conn = obter_conexao_bd()
+    if conn is None: return False
+    try:
+        tipos_validos = {"P", "M", "G", "Metal Raso (GG)", "Madeira/Metal Prof. (3G)"}
+        registros, chaves = [], set()
+        for _, row in df.iterrows():
+            genero, estacao, categoria, tipo = (str(row.get(k, "")).strip() for k in ["Gênero", "Estação", "Categoria", "Tipo de Casulo"])
+            if genero not in {"Feminino", "Masculino"}: raise ValueError(f"Gênero inválido: {genero}")
+            if estacao not in set(ESTACOES_PECA): raise ValueError(f"Estação inválida: {estacao}")
+            if not categoria: raise ValueError("Existe uma categoria vazia.")
+            if tipo not in tipos_validos: raise ValueError(f"Tipo de casulo inválido: {tipo}")
+            a, b = row.get("Mínimo"), row.get("Máximo")
+            vazio_a = a is None or (isinstance(a,float) and pd.isna(a)) or str(a).strip()==""
+            vazio_b = b is None or (isinstance(b,float) and pd.isna(b)) or str(b).strip()==""
+            if vazio_a != vazio_b: raise ValueError(f"A linha {categoria}/{tipo} precisa ter Mínimo e Máximo preenchidos ou ambos vazios.")
+            if vazio_a:
+                minimo = maximo = None
+            else:
+                minimo, maximo = int(a), int(b)
+                if minimo < 0 or maximo < 0 or minimo > maximo:
+                    raise ValueError(f"Faixa inválida em {categoria}/{tipo}: {minimo}-{maximo}")
+            chave=(genero,estacao,categoria,tipo)
+            if chave in chaves: raise ValueError(f"Combinação duplicada: {chave}")
+            chaves.add(chave); registros.append((genero,estacao,categoria,tipo,minimo,maximo))
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM capacidade_categoria")
+            cur.executemany("INSERT INTO capacidade_categoria (genero, estacao, categoria, tipo_casulo, minimo_pecas, maximo_pecas) VALUES (%s,%s,%s,%s,%s,%s)", registros)
+        conn.commit(); conn.close()
+        return carregar_configuracoes_do_banco()
+    except Exception as e:
+        try: conn.rollback(); conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd = f"falha ao salvar capacidades: {e}"
+        return False
+
+def carregar_capacidade_fixa_para_editor():
+    conn=obter_conexao_bd()
+    if conn is None: return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT rua, tipo_casulo, capacidade FROM capacidade_fixa_rua ORDER BY rua, tipo_casulo")
+            rows=cur.fetchall()
+        conn.close(); return pd.DataFrame(rows, columns=["Rua","Tipo de Casulo","Capacidade"])
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd=f"falha ao carregar densidades fixas: {e}"; return None
+
+def salvar_capacidade_fixa_do_editor(df):
+    conn=obter_conexao_bd()
+    if conn is None: return False
+    try:
+        tipos_validos={"aramado_P","aramado_M","aramado_G","metal_raso","metal_profundo","madeira"}
+        registros=[]; chaves=set()
+        for _,row in df.iterrows():
+            rua=str(row.get("Rua","")).strip(); tipo=str(row.get("Tipo de Casulo","")).strip()
+            if not rua: raise ValueError("Existe uma linha sem Rua na densidade fixa.")
+            if tipo not in tipos_validos: raise ValueError(f"Tipo estrutural inválido: {tipo}")
+            capacidade=int(row.get("Capacidade"))
+            if capacidade<0: raise ValueError("A capacidade fixa não pode ser negativa.")
+            chave=(rua,tipo)
+            if chave in chaves: raise ValueError(f"Densidade fixa duplicada: {rua}/{tipo}")
+            chaves.add(chave); registros.append((rua,tipo,capacidade))
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM capacidade_fixa_rua")
+            cur.executemany("INSERT INTO capacidade_fixa_rua (rua,tipo_casulo,capacidade) VALUES (%s,%s,%s)", registros)
+        conn.commit(); conn.close(); return carregar_configuracoes_do_banco()
+    except Exception as e:
+        try: conn.rollback(); conn.close()
+        except Exception: pass
+        st.session_state.ultimo_erro_bd=f"falha ao salvar densidades fixas: {e}"; return False
 
 def carregar_estoque_do_banco():
     """Carrega o estoque salvo no banco pro formato do base_dados_cd
@@ -855,6 +1134,10 @@ def resolver_chave_por_endereco(rua_num, nivel, coluna):
         return None, f"casulo {rua_alvo} {coluna:03d}-{nivel} não existe (nível inválido pra esse tipo de casulo)"
 
     return chave, None
+
+# Carrega as configurações persistidas antes de montar o estado inicial do CD.
+if "configuracoes_cd_carregadas" not in st.session_state:
+    st.session_state.configuracoes_cd_carregadas = bool(carregar_configuracoes_do_banco())
 
 # Inicialização do Estado
 if 'base_dados_cd' not in st.session_state:
@@ -2339,7 +2622,10 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
         st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🛠️ Painel do Gerenciador</h3>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #8892b0;'>Funções críticas disponíveis apenas para o papel de Gerente.</p>", unsafe_allow_html=True)
 
-        tab_ger1, tab_ger2, tab_ger3, tab_ger4 = st.tabs(["👥 Gestão de Logins", "🧾 Usuários Cadastrados", "📜 Histórico de Movimentações", "🧹 Ações Globais"])
+        tab_ger1, tab_ger2, tab_ger3, tab_ger4, tab_cfg1, tab_cfg2, tab_cfg3 = st.tabs([
+            "👥 Gestão de Logins", "🧾 Usuários Cadastrados", "📜 Histórico de Movimentações",
+            "🧹 Ações Globais", "🏗️ Estrutura do CD", "📦 Capacidades", "📏 Densidades Fixas"
+        ])
 
         with tab_ger1:
             st.markdown("#### Criar Novo Login")
@@ -2460,3 +2746,60 @@ elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
                     if st.button("❌ Cancelar"):
                         st.session_state.confirmar_zerar_tudo = False
                         st.rerun()
+
+        with tab_cfg1:
+            st.markdown("#### 🏗️ Estrutura física do CD")
+            st.caption("A tabela abaixo é a fonte de verdade da estrutura. Listas de colunas podem ser separadas por vírgula, ponto e vírgula ou espaço.")
+            df_estrutura = carregar_estrutura_para_editor()
+            if df_estrutura is None:
+                st.error(f"⚠️ Não consegui carregar a estrutura. `{st.session_state.get('ultimo_erro_bd')}`")
+            else:
+                df_estrutura_editado = st.data_editor(df_estrutura, use_container_width=True, hide_index=True, num_rows="dynamic", column_config={
+                    "Rua": st.column_config.TextColumn("Rua", required=True),
+                    "Tipo": st.column_config.TextColumn("Tipo estrutural da rua", required=True),
+                    "Gênero": st.column_config.SelectboxColumn("Gênero", options=["Feminino","Masculino"], required=True),
+                }, key="editor_estrutura_cd")
+                if st.button("💾 Salvar estrutura no Supabase", type="primary", key="salvar_estrutura_cfg"):
+                    if salvar_estrutura_do_editor(df_estrutura_editado):
+                        st.session_state.configuracoes_cd_carregadas=True; st.success("Estrutura salva e recarregada com sucesso."); st.rerun()
+                    else:
+                        st.error(f"❌ Não foi possível salvar a estrutura. `{st.session_state.get('ultimo_erro_bd')}`")
+
+        with tab_cfg2:
+            st.markdown("#### 📦 Capacidade por categoria")
+            st.caption("Células vazias em Mínimo/Máximo significam combinação proibida. A lista inteira é editável e novas linhas podem ser adicionadas.")
+            df_capacidade = carregar_capacidade_para_editor()
+            if df_capacidade is None:
+                st.error(f"⚠️ Não consegui carregar as capacidades. `{st.session_state.get('ultimo_erro_bd')}`")
+            else:
+                df_capacidade_editado = st.data_editor(df_capacidade, use_container_width=True, hide_index=True, num_rows="dynamic", column_config={
+                    "Gênero": st.column_config.SelectboxColumn("Gênero", options=["Feminino","Masculino"], required=True),
+                    "Estação": st.column_config.SelectboxColumn("Estação", options=ESTACOES_PECA, required=True),
+                    "Categoria": st.column_config.TextColumn("Categoria", required=True),
+                    "Tipo de Casulo": st.column_config.SelectboxColumn("Tipo de Casulo", options=["P","M","G","Metal Raso (GG)","Madeira/Metal Prof. (3G)"], required=True),
+                    "Mínimo": st.column_config.NumberColumn("Mínimo", min_value=0, step=1),
+                    "Máximo": st.column_config.NumberColumn("Máximo", min_value=0, step=1),
+                }, key="editor_capacidade_categoria")
+                if st.button("💾 Salvar capacidades no Supabase", type="primary", key="salvar_capacidade_cfg"):
+                    if salvar_capacidade_do_editor(df_capacidade_editado):
+                        st.session_state.configuracoes_cd_carregadas=True; st.success("Capacidades salvas e recarregadas com sucesso."); st.rerun()
+                    else:
+                        st.error(f"❌ Não foi possível salvar as capacidades. `{st.session_state.get('ultimo_erro_bd')}`")
+
+        with tab_cfg3:
+            st.markdown("#### 📏 Densidade fixa por rua")
+            st.caption("São as exceções de capacidade fixa usadas hoje nas ruas 15 a 21. Elas também ficam editáveis no banco.")
+            df_fixa_cfg = carregar_capacidade_fixa_para_editor()
+            if df_fixa_cfg is None:
+                st.error(f"⚠️ Não consegui carregar as densidades fixas. `{st.session_state.get('ultimo_erro_bd')}`")
+            else:
+                df_fixa_editado = st.data_editor(df_fixa_cfg, use_container_width=True, hide_index=True, num_rows="dynamic", column_config={
+                    "Rua": st.column_config.TextColumn("Rua", required=True),
+                    "Tipo de Casulo": st.column_config.SelectboxColumn("Tipo estrutural", options=["aramado_P","aramado_M","aramado_G","metal_raso","metal_profundo","madeira"], required=True),
+                    "Capacidade": st.column_config.NumberColumn("Capacidade", min_value=0, step=1, required=True),
+                }, key="editor_capacidade_fixa")
+                if st.button("💾 Salvar densidades fixas no Supabase", type="primary", key="salvar_fixa_cfg"):
+                    if salvar_capacidade_fixa_do_editor(df_fixa_editado):
+                        st.session_state.configuracoes_cd_carregadas=True; st.success("Densidades fixas salvas e recarregadas com sucesso."); st.rerun()
+                    else:
+                        st.error(f"❌ Não foi possível salvar as densidades fixas. `{st.session_state.get('ultimo_erro_bd')}`")
