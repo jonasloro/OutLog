@@ -1236,7 +1236,7 @@ if st.sidebar.button("Destacar no Sistema"):
 # ACESSO RÁPIDO — EXPEDIÇÃO (TESTE)
 st.sidebar.markdown("---")
 st.sidebar.markdown("<h4 style='color: #ffcc00;'>🚚 Expedição</h4>", unsafe_allow_html=True)
-if st.sidebar.button("🚚 Ir para Expedição (Teste)", use_container_width=True):
+if st.sidebar.button("Botico do jaco", use_container_width=True):
     st.session_state.aba_ativa_selecionada = TELA_EXPEDICAO
     st.rerun()
 
