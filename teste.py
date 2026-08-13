@@ -785,6 +785,77 @@ def extrair_totais_por_grupo_pdf(arquivo_pdf):
 
     return grupos
 
+def extrair_baixas_romaneio_pdf(arquivo_pdf):
+    """
+    Parser PROVISÓRIO para o romaneio de separação, usado só na tela de
+    Expedição (modo teste). Ainda não temos um romaneio real de exemplo, então
+    isso procura, em cada linha do PDF, um endereço de casulo no mesmo padrão
+    usado no Localizador Global ('NNN-L-NNN', ex: 003-B-009) seguido de uma
+    quantidade (o primeiro número inteiro depois do endereço na mesma linha).
+    Quando tivermos um romaneio real, este parser deve ser ajustado pro layout exato.
+    """
+    leitor = pypdf.PdfReader(arquivo_pdf)
+    texto_completo = ""
+    for pagina in leitor.pages:
+        texto_completo += (pagina.extract_text(extraction_mode="layout") or "") + "\n"
+
+    padrao_endereco = re.compile(r'\b(\d{2,3})\s*-\s*([A-Za-z])\s*-\s*(\d{2,3})\b')
+
+    linhas_extraidas = []
+    for linha_bruta in texto_completo.split("\n"):
+        linha = linha_bruta.strip()
+        if not linha:
+            continue
+        m_end = padrao_endereco.search(linha)
+        if not m_end:
+            continue
+        resto_linha = linha[m_end.end():]
+        m_qtd = re.search(r'\d+', resto_linha)
+        if not m_qtd:
+            continue
+        num_rua_str, nivel_str, col_str = m_end.groups()
+        linhas_extraidas.append({
+            "endereco": f"{int(num_rua_str):03d}-{nivel_str.upper()}-{int(col_str):03d}",
+            "rua_num": int(num_rua_str),
+            "nivel": nivel_str.upper(),
+            "coluna": int(col_str),
+            "quantidade": int(m_qtd.group())
+        })
+
+    return linhas_extraidas
+
+def resolver_chave_por_endereco(rua_num, nivel, coluna):
+    """
+    Resolve um endereço (número da rua + nível + coluna) pra chave de casulo,
+    reaproveitando a mesma lógica de determinação de lado usada na Consulta
+    Rápida de Casulos. Retorna (chave, erro) — chave vem None se erro != None.
+    """
+    rua_alvo = f"Rua {rua_num:02d}"
+    cfg = ESTRUTURA_CD.get(rua_alvo)
+    if not cfg or cfg.get("tipo") == "Inexistente":
+        return None, f"{rua_alvo} não existe"
+
+    todos_da_rua = cfg.get("cols_impar", []) + cfg.get("cols_par", []) + cfg.get("cols_seq", [])
+    if todos_da_rua and coluna not in todos_da_rua:
+        return None, f"coluna {coluna:03d} não existe na {rua_alvo}"
+
+    if "cols_seq" in cfg:
+        lado = "seq"
+    elif rua_alvo == "Rua 11":
+        lado = "par"
+    elif coluna in cfg.get("cols_impar", []):
+        lado = "impar"
+    elif coluna in cfg.get("cols_par", []):
+        lado = "par"
+    else:
+        return None, f"não consegui determinar o lado da coluna {coluna:03d}"
+
+    chave = obter_chave_casulo(rua_alvo, lado, coluna, nivel)
+    if chave not in st.session_state.base_dados_cd:
+        return None, f"casulo {rua_alvo} {coluna:03d}-{nivel} não existe (nível inválido pra esse tipo de casulo)"
+
+    return chave, None
+
 # Inicialização do Estado
 if 'base_dados_cd' not in st.session_state:
     estoque_persistido = carregar_estoque_do_banco()
@@ -1090,6 +1161,7 @@ opcoes_telas = [
     "🏠 Tela Inicial (Geral)", 
     "📦 Visualizador de Casulos", 
     "🔍 Consulta Rápida de Casulos", 
+    "🚚 Expedição (Teste)",
     "📊 Estatísticas de Casulos",
     "🧪 Simulador de Capacidade",
     "📄 Importar Relatório de Estoque",
@@ -1613,6 +1685,154 @@ elif st.session_state.aba_ativa_selecionada == "🔍 Consulta Rápida de Casulos
                     <div style="font-size: 10px; color: #8892b0; margin-top: 6px;">Mix atual: {breakdown_txt}</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+
+# ==========================================
+# TELA 3.4: EXPEDIÇÃO (TESTE)
+# ==========================================
+elif st.session_state.aba_ativa_selecionada == "🚚 Expedição (Teste)":
+    st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🚚 Expedição — Baixa por Romaneio</h3>", unsafe_allow_html=True)
+    st.warning("🧪 Tela de TESTE: as baixas abaixo acontecem só nesta sessão (não gravam no Supabase, somem se a página recarregar). O parser do PDF do romaneio é provisório — ajustamos assim que tivermos um exemplo real do formato.")
+
+    if "linhas_expedicao_pendentes" not in st.session_state:
+        st.session_state.linhas_expedicao_pendentes = []
+    if "log_expedicao_teste" not in st.session_state:
+        st.session_state.log_expedicao_teste = []
+
+    tab_exp1, tab_exp2 = st.tabs(["📄 Importar Romaneio (PDF)", "✏️ Adicionar Manualmente"])
+
+    with tab_exp1:
+        if not PYPDF_DISPONIVEL:
+            st.error("⚠️ A biblioteca 'pypdf' não está instalada neste ambiente.")
+        else:
+            st.caption("Espera encontrar, em cada linha do PDF, um endereço no formato 003-B-009 seguido de uma quantidade.")
+            arquivo_romaneio = st.file_uploader("Selecione o PDF do romaneio de separação", type=["pdf"], key="upload_romaneio_exp")
+            if arquivo_romaneio is not None:
+                if st.button("🔎 Ler Romaneio", key="btn_ler_romaneio"):
+                    try:
+                        linhas_lidas = extrair_baixas_romaneio_pdf(arquivo_romaneio)
+                        if not linhas_lidas:
+                            st.error("⚠️ Não reconheci nenhum endereço nesse PDF. O layout provavelmente é diferente do que o parser provisório espera.")
+                        else:
+                            adicionadas, com_erro = 0, 0
+                            for l in linhas_lidas:
+                                chave_r, erro_r = resolver_chave_por_endereco(l["rua_num"], l["nivel"], l["coluna"])
+                                if erro_r:
+                                    com_erro += 1
+                                    continue
+                                st.session_state.linhas_expedicao_pendentes.append({
+                                    "chave": chave_r,
+                                    "endereco": l["endereco"],
+                                    "categoria": None,
+                                    "estacao": None,
+                                    "quantidade": l["quantidade"],
+                                })
+                                adicionadas += 1
+                            st.success(f"{adicionadas} linha(s) reconhecida(s) e adicionada(s) à lista abaixo (defina a categoria/estação de cada uma).")
+                            if com_erro:
+                                st.warning(f"{com_erro} linha(s) tinham endereço não reconhecido no CD e foram ignoradas.")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"⚠️ Não consegui ler esse PDF ({e}).")
+
+    with tab_exp2:
+        col_e1, col_e2, col_e3 = st.columns(3)
+        with col_e1:
+            rua_exp = st.selectbox("Rua", list(ESTRUTURA_CD.keys()), key="rua_exp_manual")
+        cfg_exp = ESTRUTURA_CD.get(rua_exp, {})
+        if cfg_exp.get("tipo") == "Inexistente":
+            st.error(f"⚠️ A {rua_exp} é inexistente.")
+        else:
+            with col_e2:
+                col_exp = st.number_input("Coluna", min_value=1, step=1, key="col_exp_manual")
+            with col_e3:
+                nivel_exp = st.text_input("Nível", max_chars=2, key="nivel_exp_manual", placeholder="B").strip().upper()
+
+            qtd_exp = st.number_input("Quantidade a baixar", min_value=1, step=1, value=1, key="qtd_exp_manual")
+
+            if st.button("➕ Adicionar à Lista", key="btn_add_manual_exp") and nivel_exp:
+                num_rua_m = int(re.sub(r'\D', '', rua_exp))
+                chave_m, erro_m = resolver_chave_por_endereco(num_rua_m, nivel_exp, int(col_exp))
+                if erro_m:
+                    st.error(f"⚠️ {erro_m}")
+                else:
+                    st.session_state.linhas_expedicao_pendentes.append({
+                        "chave": chave_m,
+                        "endereco": f"{num_rua_m:03d}-{nivel_exp}-{int(col_exp):03d}",
+                        "categoria": None,
+                        "estacao": None,
+                        "quantidade": int(qtd_exp),
+                    })
+                    st.rerun()
+
+    st.write("---")
+
+    if not st.session_state.linhas_expedicao_pendentes:
+        st.info("💡 Nenhuma linha pendente ainda. Importe um romaneio em PDF ou adicione manualmente acima.")
+    else:
+        st.markdown("##### Linhas pendentes — defina categoria e estação de cada uma antes de aplicar")
+        linhas_validas_para_aplicar = True
+
+        for idx, linha_p in enumerate(st.session_state.linhas_expedicao_pendentes):
+            r_nome_p, lado_p, _, nivel_p = linha_p["chave"].split("|")
+            genero_p = obter_genero_rua(r_nome_p)
+
+            col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([2, 2, 2, 1, 1])
+            with col_p1:
+                st.markdown(f"**📍 {linha_p['endereco']}**")
+            with col_p2:
+                estacao_p = st.selectbox("Estação", ESTACOES_PECA, key=f"estacao_exp_{idx}")
+            with col_p3:
+                categorias_p = obter_categorias_por_estacao(genero_p)[estacao_p]
+                categoria_p = st.selectbox("Categoria", categorias_p, key=f"categoria_exp_{idx}")
+            with col_p4:
+                st.markdown(f"<div style='padding-top:28px;'>{linha_p['quantidade']} un.</div>", unsafe_allow_html=True)
+            with col_p5:
+                if st.button("🗑️", key=f"del_exp_{idx}"):
+                    st.session_state.linhas_expedicao_pendentes.pop(idx)
+                    st.rerun()
+
+            linha_p["categoria"] = categoria_p
+            linha_p["estacao"] = estacao_p
+
+            dados_casulo_p = st.session_state.base_dados_cd.get(linha_p["chave"], {})
+            chave_combo_p = obter_chave_estoque(categoria_p, estacao_p)
+            qtd_disponivel_p = dados_casulo_p.get(chave_combo_p, 0)
+            if qtd_disponivel_p < linha_p["quantidade"]:
+                st.caption(f"⚠️ Só há {qtd_disponivel_p} un. de {categoria_p} / {estacao_p} nesse casulo — a baixa de {linha_p['quantidade']} vai zerar em vez de ficar negativa.")
+                linhas_validas_para_aplicar = False
+
+        st.write("")
+        if st.button("✅ Aplicar Baixas (teste — só nesta sessão)", type="primary"):
+            for linha_p in st.session_state.linhas_expedicao_pendentes:
+                dados_casulo_p = dict(st.session_state.base_dados_cd.get(linha_p["chave"], {}))
+                chave_combo_p = obter_chave_estoque(linha_p["categoria"], linha_p["estacao"])
+                qtd_antes_p = dados_casulo_p.get(chave_combo_p, 0)
+                qtd_depois_p = max(0, qtd_antes_p - linha_p["quantidade"])
+                if qtd_depois_p <= 0:
+                    dados_casulo_p.pop(chave_combo_p, None)
+                else:
+                    dados_casulo_p[chave_combo_p] = qtd_depois_p
+                st.session_state.base_dados_cd[linha_p["chave"]] = dados_casulo_p
+
+                st.session_state.log_expedicao_teste.insert(0, {
+                    "endereco": linha_p["endereco"],
+                    "categoria": linha_p["categoria"],
+                    "estacao": linha_p["estacao"],
+                    "qtd_antes": qtd_antes_p,
+                    "qtd_depois": qtd_depois_p,
+                    "quando": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                })
+
+            st.session_state.linhas_expedicao_pendentes = []
+            st.success("Baixas aplicadas nesta sessão! (lembre: nada foi salvo no banco ainda — isso é só o teste do fluxo)")
+            st.rerun()
+
+    if st.session_state.log_expedicao_teste:
+        st.write("---")
+        st.markdown("##### 📝 Log de baixas simuladas nesta sessão")
+        df_log_exp = pd.DataFrame(st.session_state.log_expedicao_teste)
+        st.dataframe(df_log_exp, use_container_width=True, hide_index=True)
 
 
 # ==========================================
