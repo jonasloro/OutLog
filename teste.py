@@ -1161,7 +1161,6 @@ opcoes_telas = [
     "🏠 Tela Inicial (Geral)", 
     "📦 Visualizador de Casulos", 
     "🔍 Consulta Rápida de Casulos", 
-    "🚚 Expedição (Teste)",
     "📊 Estatísticas de Casulos",
     "🧪 Simulador de Capacidade",
     "📄 Importar Relatório de Estoque",
@@ -1170,10 +1169,18 @@ opcoes_telas = [
 if st.session_state.papel_atual == "gerente":
     opcoes_telas.append("🛠️ Gerenciador (Admin)")
 
-if st.session_state.aba_ativa_selecionada not in opcoes_telas:
+TELA_EXPEDICAO = "🚚 Expedição (Teste)"
+
+if st.session_state.aba_ativa_selecionada not in opcoes_telas and st.session_state.aba_ativa_selecionada != TELA_EXPEDICAO:
     st.session_state.aba_ativa_selecionada = "🏠 Tela Inicial (Geral)"
 
-st.sidebar.radio("Selecione a Tela:", opcoes_telas, key="aba_ativa_selecionada")
+if "radio_nav_widget" not in st.session_state:
+    st.session_state.radio_nav_widget = st.session_state.aba_ativa_selecionada if st.session_state.aba_ativa_selecionada in opcoes_telas else opcoes_telas[0]
+
+def _sincronizar_nav_radio():
+    st.session_state.aba_ativa_selecionada = st.session_state.radio_nav_widget
+
+st.sidebar.radio("Selecione a Tela:", opcoes_telas, key="radio_nav_widget", on_change=_sincronizar_nav_radio)
 
 st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
 if st.session_state.banco_dados_conectado:
@@ -1218,12 +1225,20 @@ if st.sidebar.button("Destacar no Sistema"):
                         'col': col_buscada
                     }
                     st.session_state.aba_ativa_selecionada = "📦 Visualizador de Casulos"
+                    st.session_state.radio_nav_widget = "📦 Visualizador de Casulos"
                     st.sidebar.success(f"Casulo localizado!")
                     st.rerun()
         else:
             st.sidebar.error("Rua não encontrada!")
     else:
         st.sidebar.error("Formato inválido! Use ex: 003-B-009")
+
+# ACESSO RÁPIDO — EXPEDIÇÃO (TESTE)
+st.sidebar.markdown("---")
+st.sidebar.markdown("<h4 style='color: #ffcc00;'>🚚 Expedição</h4>", unsafe_allow_html=True)
+if st.sidebar.button("🚚 Ir para Expedição (Teste)", use_container_width=True):
+    st.session_state.aba_ativa_selecionada = TELA_EXPEDICAO
+    st.rerun()
 
 # BRANDING DO APP
 st.markdown(f"""
@@ -1310,6 +1325,7 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
                 st.session_state.busca_destaque = None
                 st.session_state.rua_forcada_visualizador = rua
                 st.session_state.aba_ativa_selecionada = "📦 Visualizador de Casulos"
+                st.session_state.radio_nav_widget = "📦 Visualizador de Casulos"
                 st.rerun()
 
     st.write("---")
@@ -1699,6 +1715,21 @@ elif st.session_state.aba_ativa_selecionada == "🚚 Expedição (Teste)":
     if "log_expedicao_teste" not in st.session_state:
         st.session_state.log_expedicao_teste = []
 
+    st.markdown("##### 📋 Dados do Pedido (mesmas informações lançadas no Trello pelos separadores)")
+    col_tr1, col_tr2, col_tr3, col_tr4 = st.columns(4)
+    with col_tr1:
+        loja_exp = st.text_input("Loja", key="loja_exp_trello", placeholder="Ex: Loja 03")
+    with col_tr2:
+        pedido_exp = st.text_input("Nº do Pedido", key="pedido_exp_trello")
+    with col_tr3:
+        peso_exp = st.number_input("Peso total (kg)", min_value=0.0, step=0.1, key="peso_exp_trello")
+    with col_tr4:
+        volumes_exp = st.number_input("Qtd. de volumes", min_value=0, step=1, key="volumes_exp_trello")
+    obs_exp = st.text_area("Observações", key="obs_exp_trello", placeholder="Mesma linha de observações do cartão do Trello")
+    st.caption("Esses dados ainda não vão pro Trello nem pra planilha — por enquanto só ficam junto do registro da baixa, pra já deixar o formato pronto.")
+
+    st.write("---")
+
     tab_exp1, tab_exp2 = st.tabs(["📄 Importar Romaneio (PDF)", "✏️ Adicionar Manualmente"])
 
     with tab_exp1:
@@ -1816,11 +1847,16 @@ elif st.session_state.aba_ativa_selecionada == "🚚 Expedição (Teste)":
                 st.session_state.base_dados_cd[linha_p["chave"]] = dados_casulo_p
 
                 st.session_state.log_expedicao_teste.insert(0, {
+                    "loja": loja_exp or "-",
+                    "pedido": pedido_exp or "-",
+                    "peso_kg": peso_exp,
+                    "volumes": volumes_exp,
                     "endereco": linha_p["endereco"],
                     "categoria": linha_p["categoria"],
                     "estacao": linha_p["estacao"],
                     "qtd_antes": qtd_antes_p,
                     "qtd_depois": qtd_depois_p,
+                    "observacoes": obs_exp or "-",
                     "quando": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 })
 
